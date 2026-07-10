@@ -14,12 +14,12 @@ from dit import DiT_Llama
 
 if __name__ == "__main__":
 
-    wandb.init(project="d3pm_cifar10")
+    wandb.init(project="d3pm_cifar10_grayscale")
     forward_type = 'absorb'
     schedule = 'cosine'
     N = 8  # number of classes for discretized state per pixel
     d3pm = D3PM(
-        DiT_Llama(3, N, dim=1024), 1000, num_classes=N, hybrid_loss_coeff=0.0, forward_type=forward_type, schedule=schedule
+        DiT_Llama(1, N, dim=1024), 1000, num_classes=N, hybrid_loss_coeff=0.0, forward_type=forward_type, schedule=schedule
     ).cuda()
     print(f"Total Param Count: {sum([p.numel() for p in d3pm.x0_model.parameters()])}")
     dataset = CIFAR10(
@@ -29,18 +29,19 @@ if __name__ == "__main__":
         transform=transforms.Compose(
             [
                 transforms.RandomHorizontalFlip(),
+                transforms.Grayscale(num_output_channels=1),
                 transforms.ToTensor(),
             ]
         ),
     )
 
-    start_e = 499
+    start_e = 0
     if start_e > 0:
-        lpath = f"models/cifar10/model_absorb_cosine_{start_e}.pth"
+        lpath = f"models/cifar10gray/model_absorb_cosine_{start_e}.pth"
         print('loading from', lpath)
         d3pm.load_state_dict(torch.load(lpath))
     
-    dataloader = DataLoader(dataset, batch_size=192, shuffle=True, num_workers=8)
+    dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=8)
     optim = torch.optim.AdamW(d3pm.x0_model.parameters(), lr=2e-5)
     d3pm.train()
 
@@ -48,7 +49,7 @@ if __name__ == "__main__":
     device = "cuda"
 
     global_step = 0
-    save_dir = "./models/cifar10"
+    save_dir = "./models/cifar10gray"
     save_every = 25
     import os
     if not os.path.exists(save_dir):
@@ -97,7 +98,7 @@ if __name__ == "__main__":
 
                 with torch.no_grad():
                     cond = torch.arange(0, 16).cuda() % 10
-                    init_noise = torch.randint(0, N, (16, 3, 32, 32)).cuda()
+                    init_noise = torch.randint(0, N, (16, 1, 32, 32)).cuda()
 
                     images = d3pm.sample_with_image_sequence(
                         init_noise, cond, stride=40

@@ -1,9 +1,80 @@
+# Local setup / env scripts
 presetup.sh
 setup.sh
-cu122py310
-data
-test
-wandb
+#cu122py310
 run.sh
-*.pyc
-ckpt
+run_multigpu.sh
+
+# Datasets
+data/
+
+# Experiment tracking
+wandb/
+
+# Model weights and checkpoints
+models/
+models_mask_gen/
+models_mask_gen_mnist/
+models_mask_gen_cifar10/
+ckpt/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+mask_gen*.pth
+survival_table.pt
+
+# Generated samples and figures
+contents/
+
+# Training logs
+*.log
+train.log
+eval.json
+tea_debug.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Virtual environments / package managers
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc local test output
+test/
