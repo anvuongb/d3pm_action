@@ -1,12 +1,19 @@
 [project]
 name = "d3pm"
 version = "0.1.0"
-description = "Add your description here"
+description = "ITW active sensing with absorbing D3PM priors (MNIST, CIFAR-10, FastMRI)"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "h5py>=3.14.0",
     "jupyterlab>=4.6.1",
     "matplotlib>=3.11.0",
     "numpy>=2.5.1",
+    "opencv-python>=5.0.0.93",
+    "pandas>=3.0.3",
+    "pytest>=8.0.0",
     "torch>=2.13.0",
+    "torchinfo>=1.8.0",
+    "torchvision>=0.28.0",
+    "tqdm>=4.68.4",
 ]

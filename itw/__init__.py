@@ -1,45 +1,131 @@
 """ITW: information-theoretic mask generation for active sensing."""
 
-from .configs import CIFAR10Config, ITWConfig, MNISTConfig
-from .entropy import d3pm_cond_entropy_loss, masked_cond_entropy, pixel_entropy
-from .eval import evaluate_batch, evaluate_loader, plot_mask_grid, save_eval_report
+from .configs import CIFAR10Config, FastMRIConfig, ITWConfig, MNISTConfig
+from .data import FastMRIDataset
+from .discrete import (
+    apply_row_absorbing_observation,
+    magnitude_to_fine_disc,
+    magnitude_to_row_disc,
+)
+from .entropy import (
+    coarse_cond_entropy_loss,
+    d3pm_cond_entropy_loss,
+    fine_cond_entropy_loss,
+    masked_cond_entropy,
+    mean_cond_entropy,
+    nested_cond_entropy_loss,
+    pixel_entropy,
+)
+from .eval import (
+    evaluate_batch,
+    evaluate_fastmri_batch,
+    evaluate_fastmri_loader,
+    evaluate_fastmri_nested_ablation,
+    evaluate_fastmri_nested_batch,
+    evaluate_fastmri_nested_loader,
+    evaluate_loader,
+    plot_fastmri_grid,
+    plot_mask_grid,
+    random_row_mask_batch,
+    save_eval_report,
+)
+from .infonce import InfoNCELoss, ProjectionHead
 from .masks import (
+    CartesianRowMaskGenerator,
     MaskGeneratorMLP,
     SpatialMaskGenerator,
     SpatialMaskGeneratorMNIST,
+    apply_kspace_row_mask,
     apply_masked_observation,
     conditioning_features,
+    expand_row_mask,
     gumbel_mask,
+    gumbel_row_mask,
+    gumbel_row_mask_ste,
     mask_loss,
+    row_mask_loss,
 )
-from .schedule import build_pixel_survival_table, sparsity_to_timestep, cumulative_survival
-from .train import build_dataloader, build_mask_model, load_d3pm, train_cifar10, train_mask_generator, train_mnist
+from .row_d3pm import RowX0Model, build_coarse_backbone, build_fine_backbone
+from .schedule import (
+    build_fine_survival_table,
+    build_pixel_survival_table,
+    build_row_survival_table,
+    cumulative_survival,
+    sparsity_to_timestep,
+)
+from .train import (
+    build_dataloader,
+    build_mask_model,
+    load_d3pm,
+    load_d3pm_coarse,
+    load_d3pm_fine,
+    train_cifar10,
+    train_fastmri,
+    train_fastmri_infonce,
+    train_fastmri_nested,
+    train_mask_generator,
+    train_mnist,
+)
 
 __all__ = [
     "ITWConfig",
     "MNISTConfig",
     "CIFAR10Config",
+    "FastMRIConfig",
+    "FastMRIDataset",
+    "magnitude_to_fine_disc",
+    "magnitude_to_row_disc",
+    "apply_row_absorbing_observation",
     "pixel_entropy",
     "masked_cond_entropy",
+    "mean_cond_entropy",
     "d3pm_cond_entropy_loss",
+    "fine_cond_entropy_loss",
+    "coarse_cond_entropy_loss",
+    "nested_cond_entropy_loss",
+    "InfoNCELoss",
+    "ProjectionHead",
     "MaskGeneratorMLP",
     "SpatialMaskGenerator",
     "SpatialMaskGeneratorMNIST",
+    "CartesianRowMaskGenerator",
+    "RowX0Model",
+    "build_fine_backbone",
+    "build_coarse_backbone",
     "gumbel_mask",
+    "gumbel_row_mask",
+    "gumbel_row_mask_ste",
+    "expand_row_mask",
     "mask_loss",
+    "row_mask_loss",
     "apply_masked_observation",
+    "apply_kspace_row_mask",
     "conditioning_features",
     "build_pixel_survival_table",
+    "build_fine_survival_table",
+    "build_row_survival_table",
     "sparsity_to_timestep",
     "cumulative_survival",
     "load_d3pm",
+    "load_d3pm_fine",
+    "load_d3pm_coarse",
     "build_mask_model",
     "build_dataloader",
     "train_mask_generator",
     "train_mnist",
     "train_cifar10",
+    "train_fastmri",
+    "train_fastmri_infonce",
+    "train_fastmri_nested",
     "evaluate_batch",
     "evaluate_loader",
+    "evaluate_fastmri_batch",
+    "evaluate_fastmri_loader",
+    "evaluate_fastmri_nested_batch",
+    "evaluate_fastmri_nested_loader",
+    "evaluate_fastmri_nested_ablation",
+    "random_row_mask_batch",
     "plot_mask_grid",
+    "plot_fastmri_grid",
     "save_eval_report",
 ]

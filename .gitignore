@@ -5,8 +5,8 @@ setup.sh
 run.sh
 run_multigpu.sh
 
-# Datasets
-data/
+# Datasets (repo-root only; do not ignore itw/data/)
+/data/
 
 # Experiment tracking
 wandb/
@@ -16,6 +16,12 @@ models/
 models_mask_gen/
 models_mask_gen_mnist/
 models_mask_gen_cifar10/
+models_mask_gen_fastmri/
+models_mask_gen_fastmri_nested/
+models_mask_gen_fastmri_infonce/
+models_d3pm_fastmri_fine/
+models_d3pm_fastmri_coarse/
+.uv_cache/
 ckpt/
 *.pth
 *.pt
@@ -75,6 +81,15 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# LaTeX build artifacts
+docs/latex/*.aux
+docs/latex/*.blg
+docs/latex/*.log
+docs/latex/*.bbl
+docs/latex/*.out
+docs/latex/*.toc
+docs/latex/figures/*.aux
 
 # Misc local test output
 test/

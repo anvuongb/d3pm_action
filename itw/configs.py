@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import asdict, dataclass, field
 from typing import Literal
+
+import torch
+
+
+def default_device() -> str:
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def default_fastmri_root() -> str:
+    return os.environ.get(
+        "FASTMRI_ROOT", "/home/anvuong/data/fast_mri/singlecoil_train"
+    )
 
 
 @dataclass
 class ITWConfig:
-    dataset: Literal["mnist", "cifar10"]
+    dataset: Literal["mnist", "cifar10", "fastmri"]
     num_classes: int
     n_t: int = 1000
     d3pm_checkpoint: str = ""
@@ -17,7 +30,7 @@ class ITWConfig:
     multichannel: bool = False
 
     # mask model
-    mask_arch: Literal["spatial", "mlp"] = "spatial"
+    mask_arch: Literal["spatial", "mlp", "cartesian_row"] = "spatial"
     hidden_dim: int = 128
 
     # training
@@ -38,7 +51,7 @@ class ITWConfig:
     save_every: int = 10
     schedule_calibration_batches: int = 20
 
-    device: str = "cuda"
+    device: str = field(default_factory=default_device)
 
 
 @dataclass
@@ -47,7 +60,7 @@ class MNISTConfig(ITWConfig):
     num_classes: int = 2
     image_channels: int = 1
     multichannel: bool = False
-    mask_arch: Literal["spatial", "mlp"] = "spatial"
+    mask_arch: Literal["spatial", "mlp", "cartesian_row"] = "spatial"
     batch_size: int = 512
     num_workers: int = 8
     lr: float = 3e-4
@@ -64,7 +77,7 @@ class CIFAR10Config(ITWConfig):
     num_classes: int = 8
     image_channels: int = 3
     multichannel: bool = True
-    mask_arch: Literal["spatial", "mlp"] = "spatial"
+    mask_arch: Literal["spatial", "mlp", "cartesian_row"] = "spatial"
     batch_size: int = 256
     lr: float = 2e-5
     sparsity_min: float = 0.1
@@ -72,3 +85,50 @@ class CIFAR10Config(ITWConfig):
     sparsity_loss_weight: float = 1.0
     d3pm_checkpoint: str = "models/cifar10/model_absorb_cosine_499.pth"
     save_dir: str = "models_mask_gen_cifar10"
+
+
+@dataclass
+class FastMRIConfig(ITWConfig):
+    dataset: Literal["fastmri"] = "fastmri"
+    num_classes: int = 8
+    image_channels: int = 1
+    image_size: int = 300
+    multichannel: bool = False
+    mask_arch: Literal["spatial", "mlp", "cartesian_row"] = "cartesian_row"
+    data_root: str = field(default_factory=default_fastmri_root)
+    scout_size: int = 32
+    batch_size: int = 8
+    num_workers: int = 4
+    lr: float = 1e-4
+    n_epochs: int = 10
+    sparsity_min: float = 0.1
+    sparsity_max: float = 0.4
+    sparsity_loss_weight: float = 50.0
+    save_every: int = 1
+    save_dir: str = ""
+    d3pm_checkpoint: str = ""
+    feature_dim: int = 128
+    infonce_temperature: float = 0.1
+
+    # Nested D3PM entropy-proxy path (Option 2)
+    mask_objective: Literal["infonce", "nested_d3pm"] = "nested_d3pm"
+    fine_size: int = 96
+    d3pm_fine_checkpoint: str = "models_d3pm_fastmri_fine/model_absorb_cosine_final.pth"
+    d3pm_coarse_checkpoint: str = (
+        "models_d3pm_fastmri_coarse/model_absorb_cosine_final.pth"
+    )
+    entropy_alpha: float = 1.0
+    entropy_beta: float = 1.0
+    coarse_hidden: int = 64
+
+    def __post_init__(self) -> None:
+        if not self.save_dir or self.save_dir == "models_mask_gen_fastmri":
+            self.save_dir = (
+                "models_mask_gen_fastmri_nested"
+                if self.mask_objective == "nested_d3pm"
+                else "models_mask_gen_fastmri_infonce"
+            )
+
+
+def config_to_dict(cfg: ITWConfig) -> dict:
+    return asdict(cfg)

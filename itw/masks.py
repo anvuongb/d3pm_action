@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 import torch
+import torch.fft as fft
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -168,3 +169,108 @@ class SpatialMaskGeneratorMNIST(SpatialMaskGenerator):
         feat = self.encoder(torch.cat([x_cond, s_feat], dim=1))
         logits = self.decoder(feat)
         return logits.unsqueeze(1).permute(0, 1, 3, 4, 2)
+
+
+def gumbel_row_mask(
+    logits: torch.Tensor,
+    temperature: float = 0.5,
+    hard: bool = True,
+) -> torch.Tensor:
+    """logits: [B, 1, H, 2] -> row mask [B, 1, H, 1] in {0, 1}."""
+    mask_2channel = F.gumbel_softmax(logits, tau=temperature, hard=hard, dim=-1)
+    return mask_2channel[..., 1:].contiguous()
+
+
+def gumbel_row_mask_ste(
+    logits: torch.Tensor,
+    temperature: float = 0.5,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Soft keep-probs and STE hard mask from the same Gumbel sample.
+
+    Returns (row_mask_soft, row_mask_hard), both [B, 1, H, 1].
+    """
+    soft = gumbel_row_mask(logits, temperature=temperature, hard=False)
+    hard = ((soft > 0.5).to(soft.dtype) - soft).detach() + soft
+    return soft, hard
+
+
+def expand_row_mask(row_mask: torch.Tensor, width: int) -> torch.Tensor:
+    """Expand [B, 1, H, 1] row mask to [B, 1, H, W]."""
+    return row_mask.expand(-1, -1, -1, width)
+
+
+def row_mask_loss(
+    row_mask: torch.Tensor,
+    target_density: torch.Tensor,
+) -> torch.Tensor:
+    """MSE between mean selected-row fraction and target sparsity."""
+    target_density = target_density.to(row_mask.device, dtype=row_mask.dtype)
+    if target_density.dim() == 1:
+        target_density = target_density.reshape(-1)
+    current_density = row_mask.mean(dim=(1, 2, 3))
+    return F.mse_loss(current_density, target_density)
+
+
+def apply_kspace_row_mask(
+    kspace: torch.Tensor,
+    row_mask: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Apply Cartesian row mask in k-space and return magnitude reconstruction.
+
+    kspace:   [B, 1, H, W] complex
+    row_mask: [B, 1, H, 1] or [B, 1, H, W]
+    returns:  [B, 1, H, W] real magnitude image
+    """
+    width = kspace.shape[-1]
+    if row_mask.shape[-1] == 1:
+        mask_2d = expand_row_mask(row_mask, width)
+    else:
+        mask_2d = row_mask
+
+    masked = kspace * mask_2d.to(dtype=kspace.dtype)
+    return torch.abs(fft.ifft2(fft.ifftshift(masked, dim=(-2, -1))))
+
+
+class CartesianRowMaskGenerator(nn.Module):
+    """
+    Scout-conditioned Cartesian row mask generator.
+
+    Outputs Gumbel-compatible logits [B, 1, H, 2] for selecting k-space rows.
+    """
+
+    def __init__(
+        self,
+        target_rows: int = 300,
+        scalar_dim: int = 16,
+        in_channels: int = 1,
+    ):
+        super().__init__()
+        self.target_rows = target_rows
+        self.scalar_mlp = nn.Sequential(
+            nn.Linear(1, scalar_dim),
+            nn.ReLU(),
+            nn.Linear(scalar_dim, scalar_dim),
+            nn.ReLU(),
+        )
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels + scalar_dim, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.line_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((target_rows, 1)),
+            nn.Conv2d(64, 2, 1),
+        )
+
+    def forward(self, z: torch.Tensor, sparsity: torch.Tensor) -> torch.Tensor:
+        b, _, h, w = z.shape
+        s_feat = self.scalar_mlp(sparsity.reshape(b, 1).float())
+        s_feat = s_feat.view(b, -1, 1, 1).expand(-1, -1, h, w)
+        feat = self.encoder(torch.cat([z, s_feat], dim=1))
+        logits = self.line_head(feat)  # [B, 2, H, 1]
+        return logits.permute(0, 3, 2, 1).contiguous()  # [B, 1, H, 2]
+
