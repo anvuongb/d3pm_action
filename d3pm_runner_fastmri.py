@@ -13,7 +13,7 @@ from tqdm import tqdm
 from d3pm_runner import D3PM
 from itw.configs import default_device, default_fastmri_root
 from itw.data.fastmri import FastMRIDataset
-from itw.discrete import magnitude_to_fine_disc, magnitude_to_row_disc
+from itw.discrete import kspace_to_row_disc, magnitude_to_fine_disc
 from itw.row_d3pm import build_coarse_backbone, build_fine_backbone
 
 
@@ -42,13 +42,13 @@ class FastMRIDiscDataset(Dataset):
         return len(self.base)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        _z, c, _kspace = self.base[idx]
-        # c: [1, H, W]
-        c_batch = c.unsqueeze(0)
+        _z, c, kspace = self.base[idx]
         if self.mode == "fine":
-            x = magnitude_to_fine_disc(c_batch, size=self.fine_size, n_bins=self.n_bins)[0]
+            x = magnitude_to_fine_disc(
+                c.unsqueeze(0), size=self.fine_size, n_bins=self.n_bins
+            )[0]
         else:
-            x = magnitude_to_row_disc(c_batch, n_bins=self.n_bins)[0]
+            x = kspace_to_row_disc(kspace.unsqueeze(0), n_bins=self.n_bins)[0]
         cond = torch.tensor(0, dtype=torch.long)
         return x, cond
 
@@ -74,7 +74,7 @@ def train_fastmri_d3pm(
         save_dir = (
             "models_d3pm_fastmri_fine"
             if mode == "fine"
-            else "models_d3pm_fastmri_coarse"
+            else "models_d3pm_fastmri_coarse_kspace"
         )
     os.makedirs(save_dir, exist_ok=True)
 
@@ -168,7 +168,7 @@ def main() -> None:
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--coarse-hidden", type=int, default=64)
     parser.add_argument("--fine-save-dir", type=str, default="models_d3pm_fastmri_fine")
-    parser.add_argument("--coarse-save-dir", type=str, default="models_d3pm_fastmri_coarse")
+    parser.add_argument("--coarse-save-dir", type=str, default="models_d3pm_fastmri_coarse_kspace")
     args = parser.parse_args()
 
     modes = ("fine", "coarse") if args.mode == "both" else (args.mode,)

@@ -8,7 +8,7 @@ from collections.abc import Iterator
 import torch
 from tqdm import tqdm
 
-from .discrete import magnitude_to_fine_disc, magnitude_to_row_disc
+from .discrete import magnitude_to_fine_disc, kspace_to_row_disc, magnitude_to_row_disc
 
 
 def cumulative_survival(beta_t: torch.Tensor) -> torch.Tensor:
@@ -96,7 +96,17 @@ def _build_survival_from_batches(
                 t_vec = torch.full((batch_size,), t, device=device, dtype=torch.long)
                 noise = torch.rand((*x.shape, num_classes), device=device)
                 xt = d3pm.q_sample(x, t_vec, noise)
-                unchanged = (xt == x).float().mean().item()
+                # Class 0 is the absorbing state. Counting xt==x on those
+                # sites treats "already dark" as survival, so FastMRI fine
+                # tables floor near the bin-0 mass (~0.5) and t(s) is always T.
+                valid = x != 0
+                n_valid = valid.float().sum()
+                if float(n_valid) < 1.0:
+                    unchanged = 1.0
+                else:
+                    unchanged = ((xt == x) & valid).float().sum().item() / float(
+                        n_valid
+                    )
                 sampled[t] += unchanged
                 sample_counts[t] += 1
 
@@ -171,12 +181,16 @@ def build_row_survival_table(
     max_batches: int = 20,
     timestep_stride: int = 10,
 ) -> torch.Tensor:
-    """Survival table for coarse row-profile D3PM."""
+    """Survival table for coarse FastMRI D3PM (PE-line k-space energy by default)."""
 
     def _iter() -> Iterator[torch.Tensor]:
         for batch in dataloader:
+            kspace = batch[2]
             c = batch[1]
-            yield magnitude_to_row_disc(c, n_bins=n_bins)
+            if kspace.is_complex():
+                yield kspace_to_row_disc(kspace, n_bins=n_bins)
+            else:
+                yield magnitude_to_row_disc(c, n_bins=n_bins)
 
     return _build_survival_from_batches(
         d3pm,
@@ -198,9 +212,15 @@ def sparsity_to_timestep(
 
     Survival table is indexed by t=1..n_T and is decreasing in survival.
     searchsorted requires an ascending sequence, so the table is flipped
-    before lookup (paper §4.3). Higher sparsity (more kept) -> smaller t.
+    before lookup (paper §4.3).     Higher sparsity (more kept) -> smaller t.
     """
     sparsity = sparsity.to(survival_table.device).clamp(0.0, 1.0)
+    lo = float(survival_table.min())
+    if lo > 0.05:
+        warnings.warn(
+            f"Survival table min={lo:.3f}; densities below that all map to t={n_t}.",
+            stacklevel=2,
+        )
     ascending = survival_table.flip(0)
     idx = torch.searchsorted(ascending, sparsity, right=False)
     idx = idx.clamp(0, n_t - 1)

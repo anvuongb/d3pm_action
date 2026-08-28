@@ -115,10 +115,12 @@ class FastMRIConfig(ITWConfig):
     fine_size: int = 96
     d3pm_fine_checkpoint: str = "models_d3pm_fastmri_fine/model_absorb_cosine_final.pth"
     d3pm_coarse_checkpoint: str = (
-        "models_d3pm_fastmri_coarse/model_absorb_cosine_final.pth"
+        "models_d3pm_fastmri_coarse_kspace/model_absorb_cosine_final.pth"
     )
     entropy_alpha: float = 1.0
-    entropy_beta: float = 1.0
+    entropy_beta: float = 0.0
+    recon_loss_weight: float = 1.0
+    coarse_from_kspace: bool = True
     coarse_hidden: int = 64
 
     def __post_init__(self) -> None:

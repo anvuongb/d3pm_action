@@ -233,44 +233,42 @@ def apply_kspace_row_mask(
     return torch.abs(fft.ifft2(fft.ifftshift(masked, dim=(-2, -1))))
 
 
+def magnitude_from_kspace(kspace: torch.Tensor) -> torch.Tensor:
+    """Full-sampled magnitude reconstruction. kspace: [B, 1, H, W] complex."""
+    return torch.abs(fft.ifft2(fft.ifftshift(kspace, dim=(-2, -1))))
+
+
 class CartesianRowMaskGenerator(nn.Module):
     """
     Scout-conditioned Cartesian row mask generator.
 
-    Outputs Gumbel-compatible logits [B, 1, H, 2] for selecting k-space rows.
+    Pools the scout along FE to a PE-line profile, then a 1D conv stack
+    predicts keep/drop logits per row. Outputs [B, 1, H, 2].
     """
 
     def __init__(
         self,
         target_rows: int = 300,
-        scalar_dim: int = 16,
+        hidden: int = 64,
         in_channels: int = 1,
     ):
         super().__init__()
+        del in_channels
         self.target_rows = target_rows
-        self.scalar_mlp = nn.Sequential(
-            nn.Linear(1, scalar_dim),
-            nn.ReLU(),
-            nn.Linear(scalar_dim, scalar_dim),
-            nn.ReLU(),
+        self.row_in = nn.Conv1d(2, hidden, kernel_size=7, padding=3)
+        self.backbone = nn.Sequential(
+            nn.Conv1d(hidden, hidden, kernel_size=5, padding=2),
+            nn.GELU(),
+            nn.Conv1d(hidden, hidden, kernel_size=5, padding=2),
+            nn.GELU(),
         )
-        self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels + scalar_dim, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-        )
-        self.line_head = nn.Sequential(
-            nn.AdaptiveAvgPool2d((target_rows, 1)),
-            nn.Conv2d(64, 2, 1),
-        )
+        self.out = nn.Conv1d(hidden, 2, kernel_size=1)
 
     def forward(self, z: torch.Tensor, sparsity: torch.Tensor) -> torch.Tensor:
-        b, _, h, w = z.shape
-        s_feat = self.scalar_mlp(sparsity.reshape(b, 1).float())
-        s_feat = s_feat.view(b, -1, 1, 1).expand(-1, -1, h, w)
-        feat = self.encoder(torch.cat([z, s_feat], dim=1))
-        logits = self.line_head(feat)  # [B, 2, H, 1]
-        return logits.permute(0, 3, 2, 1).contiguous()  # [B, 1, H, 2]
+        b, _, h, _w = z.shape
+        row = z.float().mean(dim=-1)  # [B, 1, H]
+        s_ch = sparsity.reshape(b, 1, 1).float().expand(b, 1, h)
+        h1 = self.row_in(torch.cat([row, s_ch], dim=1))
+        logits = self.out(self.backbone(h1))  # [B, 2, H]
+        return logits.permute(0, 2, 1).unsqueeze(1).contiguous()  # [B, 1, H, 2]
 

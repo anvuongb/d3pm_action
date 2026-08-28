@@ -58,7 +58,7 @@ def magnitude_to_row_disc(
     ste: bool = False,
 ) -> torch.Tensor:
     """
-    Per-PE-row mean magnitude profile, quantized.
+    Per-image-row mean magnitude profile, quantized.
 
     c: [B, 1, H, W] (or [B, H, W])
     returns: [B, 1, H, 1] long (ste=False) or float STE bins (ste=True)
@@ -70,6 +70,35 @@ def magnitude_to_row_disc(
     if ste:
         return quantize_unit_ste(unit, n_bins)
     return quantize_unit(unit, n_bins)
+
+
+def kspace_to_row_disc(
+    kspace: torch.Tensor,
+    n_bins: int = 8,
+    ste: bool = False,
+) -> torch.Tensor:
+    """
+    Per-PE-line k-space energy, log1p + min-max + quantize.
+
+    kspace: [B, 1, H, W] (or [B, H, W]) complex
+    returns: [B, 1, H, 1] long (ste=False) or float STE bins (ste=True)
+    """
+    if kspace.dim() == 3:
+        kspace = kspace.unsqueeze(1)
+    energy = torch.log1p(kspace.abs().mean(dim=-1, keepdim=True).float())
+    unit = _per_sample_minmax(energy)
+    if ste:
+        return quantize_unit_ste(unit, n_bins)
+    return quantize_unit(unit, n_bins)
+
+
+def nmse(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """Per-sample ||pred-target||^2 / ||target||^2, then mean over batch."""
+    pred = pred.float()
+    target = target.float()
+    num = (pred - target).pow(2).flatten(1).sum(dim=1)
+    den = target.pow(2).flatten(1).sum(dim=1).clamp_min(eps)
+    return (num / den).mean()
 
 
 def apply_row_absorbing_observation(

@@ -50,3 +50,24 @@ def test_sparsity_to_timestep_decreases_with_density() -> None:
     assert not all(int(v) == n_t for v in t.tolist())
     assert int(t.min()) >= 1
     assert int(t.max()) <= n_t
+
+
+class _AbsorbNonzeroD3PM(_IdentityD3PM):
+    def q_sample(self, x, t, noise):
+        del t, noise
+        return torch.zeros_like(x)
+
+
+def test_survival_ignores_absorb_class_zero() -> None:
+    """xt==x on bin-0 (absorb / dark) must not inflate survival."""
+    d3pm = _AbsorbNonzeroD3PM()
+
+    def batches():
+        x = torch.zeros(2, 1, 4, 4, dtype=torch.long)
+        x[..., :2, :] = 1
+        yield x
+
+    table = _build_survival_from_batches(
+        d3pm, batches(), device="cpu", max_batches=1, timestep_stride=5, desc="z"
+    )
+    assert float(table.max()) <= 0.05

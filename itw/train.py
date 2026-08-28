@@ -18,8 +18,10 @@ from .configs import CIFAR10Config, FastMRIConfig, ITWConfig, MNISTConfig, confi
 from .data.fastmri import FastMRIDataset
 from .discrete import (
     apply_row_absorbing_observation,
+    kspace_to_row_disc,
     magnitude_to_fine_disc,
     magnitude_to_row_disc,
+    nmse,
 )
 from .entropy import (
     coarse_cond_entropy_loss,
@@ -38,6 +40,7 @@ from .masks import (
     conditioning_features,
     gumbel_mask,
     gumbel_row_mask_ste,
+    magnitude_from_kspace,
     mask_loss,
     row_mask_loss,
 )
@@ -126,6 +129,18 @@ def load_d3pm_coarse(cfg: FastMRIConfig) -> D3PM:
         torch.load(cfg.d3pm_coarse_checkpoint, map_location=cfg.device)
     )
     return _freeze_d3pm(d3pm)
+
+
+def coarse_profile(
+    cfg: FastMRIConfig,
+    c: torch.Tensor,
+    kspace: torch.Tensor,
+    ste: bool = False,
+) -> torch.Tensor:
+    """Discrete PE-row profile for the coarse prior (k-space energy by default)."""
+    if cfg.coarse_from_kspace:
+        return kspace_to_row_disc(kspace, n_bins=cfg.num_classes, ste=ste)
+    return magnitude_to_row_disc(c, n_bins=cfg.num_classes, ste=ste)
 
 
 def build_mask_model(cfg: ITWConfig) -> torch.nn.Module:
@@ -410,10 +425,14 @@ def train_fastmri_nested(
 
     model = model or build_mask_model(cfg)
     dataloader = dataloader or build_dataloader(cfg)
-    d3pm_fine = d3pm_fine or load_d3pm_fine(cfg)
     d3pm_coarse = d3pm_coarse or load_d3pm_coarse(cfg)
+    use_fine = cfg.entropy_beta > 0
+    if use_fine:
+        d3pm_fine = d3pm_fine or load_d3pm_fine(cfg)
+    else:
+        d3pm_fine = None
 
-    if fine_survival is None:
+    if use_fine and fine_survival is None:
         fine_survival = build_fine_survival_table(
             d3pm_fine,
             dataloader,
@@ -422,6 +441,8 @@ def train_fastmri_nested(
             n_bins=cfg.num_classes,
             max_batches=cfg.schedule_calibration_batches,
         )
+    if not use_fine:
+        fine_survival = torch.linspace(1.0, 0.01, cfg.n_t)
     if coarse_survival is None:
         coarse_survival = build_row_survival_table(
             d3pm_coarse,
@@ -460,23 +481,28 @@ def train_fastmri_nested(
             )
 
             y_mag = apply_kspace_row_mask(kspace, row_mask)
-            y_fine = magnitude_to_fine_disc(
-                y_mag, size=cfg.fine_size, n_bins=cfg.num_classes, ste=True
-            )
-            t_fine = sparsity_to_timestep(sparsity, fine_survival, cfg.n_t)
-
-            c_row = magnitude_to_row_disc(c, n_bins=cfg.num_classes)
-            y_row = apply_row_absorbing_observation(
-                c_row, row_mask, cfg.num_classes
-            )
-            t_coarse = sparsity_to_timestep(sparsity, coarse_survival, cfg.n_t)
+            c_mag = magnitude_from_kspace(kspace)
+            recon_loss = nmse(y_mag, c_mag)
 
             b = z.shape[0]
             if b not in cond0_cache:
                 cond0_cache[b] = torch.zeros(b, dtype=torch.long, device=cfg.device)
             cond0 = cond0_cache[b]
 
-            h_fine = fine_cond_entropy_loss(d3pm_fine, y_fine, t_fine, cond0)
+            h_fine = torch.zeros((), device=cfg.device)
+            if use_fine:
+                y_fine = magnitude_to_fine_disc(
+                    y_mag, size=cfg.fine_size, n_bins=cfg.num_classes, ste=True
+                )
+                t_fine = sparsity_to_timestep(sparsity, fine_survival, cfg.n_t)
+                h_fine = fine_cond_entropy_loss(d3pm_fine, y_fine, t_fine, cond0)
+
+            c_row = coarse_profile(cfg, c, kspace, ste=True)
+            y_row = apply_row_absorbing_observation(
+                c_row, row_mask, cfg.num_classes
+            )
+            t_coarse = sparsity_to_timestep(sparsity, coarse_survival, cfg.n_t)
+
             h_coarse = coarse_cond_entropy_loss(
                 d3pm_coarse, y_row, t_coarse, cond0, row_mask
             )
@@ -484,7 +510,11 @@ def train_fastmri_nested(
                 h_coarse, h_fine, alpha=cfg.entropy_alpha, beta=cfg.entropy_beta
             )
             sparsity_loss = row_mask_loss(row_mask_soft, sparsity)
-            loss = h_loss + cfg.sparsity_loss_weight * sparsity_loss
+            loss = (
+                h_loss
+                + cfg.sparsity_loss_weight * sparsity_loss
+                + cfg.recon_loss_weight * recon_loss
+            )
             loss.backward()
             optim.step()
 
@@ -499,14 +529,15 @@ def train_fastmri_nested(
             pbar.set_description(
                 f"epoch {epoch} loss {loss_ema:.4f} "
                 f"Hc {h_coarse.item():.4f} Hf {h_fine.item():.4f} "
-                f"sp {sparsity_loss.item():.4f} dens {density_ema:.3f} "
-                f"tau {temperature:.2f}"
+                f"nmse {recon_loss.item():.4f} sp {sparsity_loss.item():.4f} "
+                f"dens {density_ema:.3f} tau {temperature:.2f}"
             )
 
         _append_train_log(
             log_path,
             f"epoch: {epoch}, loss: {loss_ema:.6f}, "
             f"H_coarse: {h_coarse.item():.6f}, H_fine: {h_fine.item():.6f}, "
+            f"nmse: {recon_loss.item():.6f}, "
             f"sparsity_loss: {sparsity_loss.item():.6f}, density: {density_ema:.6f}, "
             f"tau: {temperature:.3f}\n",
         )

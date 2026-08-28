@@ -4,8 +4,10 @@ from .configs import CIFAR10Config, FastMRIConfig, ITWConfig, MNISTConfig
 from .data import FastMRIDataset
 from .discrete import (
     apply_row_absorbing_observation,
+    kspace_to_row_disc,
     magnitude_to_fine_disc,
     magnitude_to_row_disc,
+    nmse,
 )
 from .entropy import (
     coarse_cond_entropy_loss,
@@ -75,6 +77,8 @@ __all__ = [
     "FastMRIDataset",
     "magnitude_to_fine_disc",
     "magnitude_to_row_disc",
+    "kspace_to_row_disc",
+    "nmse",
     "apply_row_absorbing_observation",
     "pixel_entropy",
     "masked_cond_entropy",

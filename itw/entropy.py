@@ -88,13 +88,20 @@ def coarse_cond_entropy_loss(
     y_row: torch.Tensor,
     t_coarse: torch.Tensor,
     cond: torch.Tensor,
-    row_mask: torch.Tensor,
+    row_mask: torch.Tensor | None = None,
     normalize: bool = True,
 ) -> torch.Tensor:
-    """Masked-only entropy on selected PE rows."""
-    return d3pm_cond_entropy_loss(
-        d3pm_coarse, y_row, t_coarse, cond, row_mask, normalize=normalize
-    )
+    """
+    Mean entropy over the full PE-row profile, including absorbed rows.
+
+    Masked-only mean entropy is ~0 for any nonempty mask once the coarse
+    prior is sharp, so dropping rows is free until the mask is empty
+    (where the log(N) penalty has zero gradient). Full-profile entropy
+    rises as more rows are absorbed, which is the H(C|Y) signal.
+    """
+    del row_mask, normalize
+    logits = d3pm_coarse.model_predict(y_row, t_coarse, cond)
+    return mean_cond_entropy(logits)
 
 
 def nested_cond_entropy_loss(

@@ -21,6 +21,7 @@ models_mask_gen_fastmri_nested/
 models_mask_gen_fastmri_infonce/
 models_d3pm_fastmri_fine/
 models_d3pm_fastmri_coarse/
+models_d3pm_fastmri_coarse_kspace/
 .uv_cache/
 ckpt/
 *.pth

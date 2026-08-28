@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from .discrete import (
     apply_row_absorbing_observation,
     magnitude_to_fine_disc,
-    magnitude_to_row_disc,
+    nmse,
 )
 from .entropy import (
     coarse_cond_entropy_loss,
@@ -27,9 +27,10 @@ from .masks import (
     expand_row_mask,
     gumbel_mask,
     gumbel_row_mask,
+    magnitude_from_kspace,
 )
 from .schedule import sparsity_to_timestep
-from .train import discretize, forward_mask_logits
+from .train import coarse_profile, discretize, forward_mask_logits
 
 
 def random_mask_batch(
@@ -242,24 +243,29 @@ def _nested_proxy_for_mask(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Return (h_coarse, h_fine, h_nested, t_fine, t_coarse) for a fixed row mask."""
     y_mag = apply_kspace_row_mask(kspace, row_mask)
-    y_fine = magnitude_to_fine_disc(
-        y_mag, size=cfg.fine_size, n_bins=cfg.num_classes
-    )
-    t_fine = sparsity_to_timestep(sparsity, fine_survival, cfg.n_t)
-
-    c_row = magnitude_to_row_disc(c, n_bins=cfg.num_classes)
-    y_row = apply_row_absorbing_observation(c_row, row_mask, cfg.num_classes)
-    t_coarse = sparsity_to_timestep(sparsity, coarse_survival, cfg.n_t)
+    c_mag = magnitude_from_kspace(kspace)
+    recon = nmse(y_mag, c_mag)
 
     cond0 = torch.zeros(c.shape[0], dtype=torch.long, device=cfg.device)
-    h_fine = fine_cond_entropy_loss(d3pm_fine, y_fine, t_fine, cond0)
+    t_fine = sparsity_to_timestep(sparsity, fine_survival, cfg.n_t)
+    if d3pm_fine is not None and cfg.entropy_beta > 0:
+        y_fine = magnitude_to_fine_disc(
+            y_mag, size=cfg.fine_size, n_bins=cfg.num_classes
+        )
+        h_fine = fine_cond_entropy_loss(d3pm_fine, y_fine, t_fine, cond0)
+    else:
+        h_fine = torch.zeros((), device=cfg.device)
+
+    c_row = coarse_profile(cfg, c, kspace)
+    y_row = apply_row_absorbing_observation(c_row, row_mask, cfg.num_classes)
+    t_coarse = sparsity_to_timestep(sparsity, coarse_survival, cfg.n_t)
     h_coarse = coarse_cond_entropy_loss(
         d3pm_coarse, y_row, t_coarse, cond0, row_mask
     )
     h_nested = nested_cond_entropy_loss(
         h_coarse, h_fine, alpha=cfg.entropy_alpha, beta=cfg.entropy_beta
     )
-    return h_coarse, h_fine, h_nested, t_fine, t_coarse
+    return h_coarse, h_fine, h_nested, t_fine, t_coarse, recon
 
 
 @torch.no_grad()
@@ -294,7 +300,7 @@ def evaluate_fastmri_nested_batch(
         z.shape[0], cfg.image_size, sparsity, cfg.device
     )
 
-    h_c_l, h_f_l, h_n_l, t_f_l, t_c_l = _nested_proxy_for_mask(
+    h_c_l, h_f_l, h_n_l, t_f_l, t_c_l, nmse_l = _nested_proxy_for_mask(
         d3pm_fine,
         d3pm_coarse,
         cfg,
@@ -305,7 +311,7 @@ def evaluate_fastmri_nested_batch(
         fine_survival,
         coarse_survival,
     )
-    h_c_r, h_f_r, h_n_r, t_f_r, t_c_r = _nested_proxy_for_mask(
+    h_c_r, h_f_r, h_n_r, t_f_r, t_c_r, nmse_r = _nested_proxy_for_mask(
         d3pm_fine,
         d3pm_coarse,
         cfg,
@@ -336,6 +342,9 @@ def evaluate_fastmri_nested_batch(
         "sparsity_err_random": F.l1_loss(random_density, sparsity).item(),
         "mean_sparsity_learned": learned_density.mean().item(),
         "mean_sparsity_target": sparsity.mean().item(),
+        "nmse_learned": nmse_l.item(),
+        "nmse_random": nmse_r.item(),
+        "delta_nmse": nmse_r.item() - nmse_l.item(),
     }
 
     if proj_head is not None:
@@ -363,7 +372,8 @@ def evaluate_fastmri_nested_loader(
     proj_head=None,
 ) -> dict[str, float]:
     model.eval()
-    d3pm_fine.eval()
+    if d3pm_fine is not None:
+        d3pm_fine.eval()
     d3pm_coarse.eval()
     if proj_head is not None:
         proj_head.eval()
