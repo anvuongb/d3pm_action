@@ -122,6 +122,8 @@ class FastMRIConfig(ITWConfig):
     recon_loss_weight: float = 1.0
     coarse_from_kspace: bool = True
     coarse_hidden: int = 64
+    policy_input: Literal["scout_image", "acs_kspace"] = "scout_image"
+    acs_lock: bool = False
 
     def __post_init__(self) -> None:
         if not self.save_dir or self.save_dir == "models_mask_gen_fastmri":

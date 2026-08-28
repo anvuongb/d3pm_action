@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 import os
 from pathlib import Path
 
@@ -40,8 +42,10 @@ from .masks import (
     conditioning_features,
     gumbel_mask,
     gumbel_row_mask_ste,
+    gumbel_row_mask_ste_acs_locked,
     magnitude_from_kspace,
     mask_loss,
+    policy_condition,
     row_mask_loss,
 )
 from .row_d3pm import build_coarse_backbone, build_fine_backbone
@@ -63,6 +67,15 @@ def _append_train_log(log_path: Path, line: str) -> None:
         f.write(line)
 
 
+def _policy_collapsed(
+    density: float | None, h_coarse: float, n_classes: int
+) -> bool:
+    """All-zero masks: density ~0 and H_c saturates near log n_classes."""
+    if density is None:
+        return False
+    return density < 0.02 and h_coarse > (math.log(n_classes) - 0.25)
+
+
 def _gumbel_temperature(cfg: ITWConfig, epoch: int) -> float:
     if cfg.n_epochs <= 1:
         return cfg.gumbel_temperature_end
@@ -70,6 +83,18 @@ def _gumbel_temperature(cfg: ITWConfig, epoch: int) -> float:
     return cfg.gumbel_temperature_start + frac * (
         cfg.gumbel_temperature_end - cfg.gumbel_temperature_start
     )
+
+
+def _row_mask_ste(cfg, row_logits: torch.Tensor, sparsity: torch.Tensor, temperature: float):
+    """STE Gumbel; ACS overwrite when ``cfg.acs_lock`` (FastMRI nested A2)."""
+    if getattr(cfg, "acs_lock", False):
+        return gumbel_row_mask_ste_acs_locked(
+            row_logits,
+            sparsity,
+            acs_width=int(getattr(cfg, "scout_size", 32)),
+            temperature=temperature,
+        )
+    return gumbel_row_mask_ste(row_logits, temperature=temperature)
 
 
 def _freeze_d3pm(d3pm: D3PM) -> D3PM:
@@ -143,9 +168,29 @@ def coarse_profile(
     return magnitude_to_row_disc(c, n_bins=cfg.num_classes, ste=ste)
 
 
+def mask_generator_cond(
+    cfg: FastMRIConfig,
+    z: torch.Tensor,
+    kspace: torch.Tensor,
+) -> torch.Tensor:
+    """Scout image Z or ACS k-space strip, matching cfg.policy_input."""
+    return policy_condition(
+        getattr(cfg, "policy_input", "scout_image"),
+        z,
+        kspace,
+        scout_size=int(getattr(cfg, "scout_size", 32)),
+    )
+
+
 def build_mask_model(cfg: ITWConfig) -> torch.nn.Module:
     if cfg.dataset == "fastmri" or cfg.mask_arch == "cartesian_row":
-        return CartesianRowMaskGenerator(target_rows=cfg.image_size).to(cfg.device)
+        in_kind = getattr(cfg, "policy_input", "scout_image")
+        scout_size = int(getattr(cfg, "scout_size", 32))
+        return CartesianRowMaskGenerator(
+            target_rows=cfg.image_size,
+            in_kind=in_kind,
+            scout_size=scout_size,
+        ).to(cfg.device)
 
     if cfg.mask_arch == "mlp":
         return MaskGeneratorMLP(size=cfg.image_size).to(cfg.device)
@@ -347,9 +392,9 @@ def train_fastmri_infonce(
             c = c.to(cfg.device)
             kspace = kspace.to(cfg.device)
 
-            row_logits = model(z, sparsity)
-            row_mask_soft, row_mask = gumbel_row_mask_ste(
-                row_logits, temperature=temperature
+            row_logits = model(mask_generator_cond(cfg, z, kspace), sparsity)
+            row_mask_soft, row_mask = _row_mask_ste(
+                cfg, row_logits, sparsity, temperature
             )
             y = apply_kspace_row_mask(kspace, row_mask)
 
@@ -456,12 +501,30 @@ def train_fastmri_nested(
 
     optim = torch.optim.Adam(model.parameters(), lr=cfg.lr)
     cond0_cache: dict[int, torch.Tensor] = {}
+    epoch_hist: list[dict] = []
+    collapsed = False
+    last_epoch = -1
+    loss_ema = None
+    density_ema = None
+    h_coarse_item = 0.0
+    h_fine_item = 0.0
+    recon_item = 0.0
+    sparsity_item = 0.0
+    hc_mean = 0.0
+    hf_mean = 0.0
+    nmse_mean = 0.0
+    sp_mean = 0.0
 
     for epoch in range(cfg.n_epochs):
         model.train()
         temperature = _gumbel_temperature(cfg, epoch)
         loss_ema = None
         density_ema = None
+        n_steps = 0
+        sum_hc = 0.0
+        sum_hf = 0.0
+        sum_nmse = 0.0
+        sum_sp = 0.0
         pbar = tqdm(dataloader, desc=f"epoch {epoch}")
 
         for z, c, kspace in pbar:
@@ -475,9 +538,9 @@ def train_fastmri_nested(
             c = c.to(cfg.device)
             kspace = kspace.to(cfg.device)
 
-            row_logits = model(z, sparsity)
-            row_mask_soft, row_mask = gumbel_row_mask_ste(
-                row_logits, temperature=temperature
+            row_logits = model(mask_generator_cond(cfg, z, kspace), sparsity)
+            row_mask_soft, row_mask = _row_mask_ste(
+                cfg, row_logits, sparsity, temperature
             )
 
             y_mag = apply_kspace_row_mask(kspace, row_mask)
@@ -519,6 +582,15 @@ def train_fastmri_nested(
             optim.step()
 
             density = float(row_mask.detach().mean())
+            h_coarse_item = h_coarse.item()
+            h_fine_item = h_fine.item()
+            recon_item = recon_loss.item()
+            sparsity_item = sparsity_loss.item()
+            n_steps += 1
+            sum_hc += h_coarse_item
+            sum_hf += h_fine_item
+            sum_nmse += recon_item
+            sum_sp += sparsity_item
             if loss_ema is None:
                 loss_ema = loss.item()
                 density_ema = density
@@ -528,18 +600,43 @@ def train_fastmri_nested(
 
             pbar.set_description(
                 f"epoch {epoch} loss {loss_ema:.4f} "
-                f"Hc {h_coarse.item():.4f} Hf {h_fine.item():.4f} "
-                f"nmse {recon_loss.item():.4f} sp {sparsity_loss.item():.4f} "
+                f"Hc {h_coarse_item:.4f} Hf {h_fine_item:.4f} "
+                f"nmse {recon_item:.4f} sp {sparsity_item:.4f} "
                 f"dens {density_ema:.3f} tau {temperature:.2f}"
             )
 
+            if n_steps >= 40 and _policy_collapsed(
+                density_ema, h_coarse_item, cfg.num_classes
+            ):
+                collapsed = True
+                pbar.close()
+                break
+
+        last_epoch = epoch
+        hc_mean = sum_hc / max(n_steps, 1)
+        hf_mean = sum_hf / max(n_steps, 1)
+        nmse_mean = sum_nmse / max(n_steps, 1)
+        sp_mean = sum_sp / max(n_steps, 1)
         _append_train_log(
             log_path,
             f"epoch: {epoch}, loss: {loss_ema:.6f}, "
-            f"H_coarse: {h_coarse.item():.6f}, H_fine: {h_fine.item():.6f}, "
-            f"nmse: {recon_loss.item():.6f}, "
-            f"sparsity_loss: {sparsity_loss.item():.6f}, density: {density_ema:.6f}, "
+            f"H_coarse: {hc_mean:.6f}, H_fine: {hf_mean:.6f}, "
+            f"nmse: {nmse_mean:.6f}, "
+            f"sparsity_loss: {sp_mean:.6f}, density: {density_ema:.6f}, "
             f"tau: {temperature:.3f}\n",
+        )
+        epoch_hist.append(
+            {
+                "epoch": epoch,
+                "loss_ema": loss_ema,
+                "density_ema": density_ema,
+                "h_coarse_mean": hc_mean,
+                "h_fine_mean": hf_mean,
+                "nmse_mean": nmse_mean,
+                "sparsity_loss_mean": sp_mean,
+                "tau": temperature,
+                "n_steps": n_steps,
+            }
         )
 
         if (epoch + 1) % cfg.save_every == 0:
@@ -551,10 +648,21 @@ def train_fastmri_nested(
                     "mask_objective": "nested_d3pm",
                     "entropy_alpha": cfg.entropy_alpha,
                     "entropy_beta": cfg.entropy_beta,
+                    "collapsed": collapsed,
                     "cfg": config_to_dict(cfg),
                 },
                 ckpt,
             )
+
+        if collapsed:
+            _append_train_log(
+                log_path,
+                f"COLLAPSED at epoch {epoch}: density={density_ema:.6f} "
+                f"H_coarse_last={h_coarse_item:.6f} "
+                f"(~log {cfg.num_classes}={math.log(cfg.num_classes):.4f}); "
+                "stopping early\n",
+            )
+            break
 
     final_ckpt = Path(cfg.save_dir) / "mask_gen_fastmri_final.pth"
     torch.save(
@@ -563,12 +671,29 @@ def train_fastmri_nested(
             "mask_objective": "nested_d3pm",
             "entropy_alpha": cfg.entropy_alpha,
             "entropy_beta": cfg.entropy_beta,
+            "collapsed": collapsed,
             "cfg": config_to_dict(cfg),
         },
         final_ckpt,
     )
     torch.save(fine_survival.cpu(), Path(cfg.save_dir) / "fine_survival_table.pt")
     torch.save(coarse_survival.cpu(), Path(cfg.save_dir) / "coarse_survival_table.pt")
+    status = {
+        "collapsed": collapsed,
+        "epochs_completed": last_epoch + 1,
+        "n_epochs_requested": cfg.n_epochs,
+        "entropy_alpha": cfg.entropy_alpha,
+        "entropy_beta": cfg.entropy_beta,
+        "recon_loss_weight": cfg.recon_loss_weight,
+        "final_loss_ema": loss_ema,
+        "final_density_ema": density_ema,
+        "final_h_coarse_mean": hc_mean,
+        "final_nmse_mean": nmse_mean,
+        "epochs": epoch_hist,
+    }
+    (Path(cfg.save_dir) / "train_status.json").write_text(
+        json.dumps(status, indent=2), encoding="utf-8"
+    )
     return model, {"fine_survival": fine_survival, "coarse_survival": coarse_survival}
 
 
