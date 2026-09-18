@@ -290,9 +290,10 @@ Optimizing the discrete mask directly against a reconstructor. Gradient-based re
 \begin{table}[t]
 \centering
 \small
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lcccc}
 \hline
-$s$ & \textbf{Learned static} & \textbf{ACS + var.\ density} & \textbf{Gain} & \textbf{LOUPE} \\
+$s$ & \textbf{Ours (static)} & \textbf{ACS + VD} & \textbf{Gain} & \textbf{LOUPE} \\
 \hline
 0.25 & \textbf{0.02355} & 0.02448 $\pm$ 0.00006 & $+3.79\%$ & 0.02698 \\
 0.40 & \textbf{0.01842} & 0.01882 $\pm$ 0.00005 & $+2.14\%$ & 0.02245 \\
@@ -300,7 +301,7 @@ $s$ & \textbf{Learned static} & \textbf{ACS + var.\ density} & \textbf{Gain} & \
 0.75 & 0.00763 & 0.00765 $\pm$ 0.00001 & $+0.18\%$ & 0.00974 \\
 \hline
 \end{tabular}
-\caption{Held-out val NMSE under the judge U-Net B. The first three gains over variable density exceed $2$ seed standard deviations; $s=0.75$ is a tie. LOUPE \citep{bahadir2020loupe}: row-restricted, trained to mask convergence, budget-exact top-$k$.}
+\caption{Held-out val NMSE under the judge U-Net B. ACS + VD: ACS block plus variable-density rows, 5 seeds. The first three gains over it exceed $2$ seed standard deviations; $s=0.75$ is a tie. LOUPE \citep{bahadir2020loupe}: row-restricted, trained to mask convergence, budget-exact top-$k$.}
 \label{tab:mri-main}
 \end{table}
 
