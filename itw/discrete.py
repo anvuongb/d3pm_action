@@ -92,12 +92,22 @@ def kspace_to_row_disc(
     return quantize_unit(unit, n_bins)
 
 
-def nmse(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    """Per-sample ||pred-target||^2 / ||target||^2, then mean over batch."""
+def nmse(pred: torch.Tensor, target: torch.Tensor, eps: float = 0.0) -> torch.Tensor:
+    """Per-sample ||pred-target||^2 / ||target||^2, then mean over batch.
+
+    ``eps`` is an absolute floor on the denominator and defaults to 0. It used
+    to default to 1e-8, which is not a safe floor here: FastMRI magnitude is
+    ~1e-6, so ||target||^2 is ~4e-9 for a median 300x300 slice and the floor
+    replaced the denominator on ~2/3 of them. That turns NMSE into a
+    constant-scaled MSE on exactly the low-energy slices, silently down-weights
+    them, and reads ~4x lower than the true ratio. Only an all-zero target
+    needs protection, so clamp at the dtype's tiny value instead.
+    """
     pred = pred.float()
     target = target.float()
     num = (pred - target).pow(2).flatten(1).sum(dim=1)
-    den = target.pow(2).flatten(1).sum(dim=1).clamp_min(eps)
+    floor = max(eps, torch.finfo(target.dtype).tiny)
+    den = target.pow(2).flatten(1).sum(dim=1).clamp_min(floor)
     return (num / den).mean()
 
 
