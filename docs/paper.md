@@ -306,16 +306,31 @@ spirit of Bahadir et al. 2020) loses to variable density at every sparsity. A
 greedy row-swap search on the *hard* mask—gradient proposes candidate swaps,
 exact evaluation accepts them, in the spirit of Gözcü et al. 2018—wins:
 
-| $s$ | learned static mask | ACS + variable density | gain | |
-|-----|--------------------|------------------------|------|--|
-| 0.25 | **0.02355** | 0.02450 $\pm$ 0.00006 | $+3.79\%$ | $> 2$ sd |
-| 0.40 | **0.01842** | 0.01873 $\pm$ 0.00005 | $+2.14\%$ | $> 2$ sd |
-| 0.50 | **0.01521** | 0.01538 $\pm$ 0.00007 | $+1.49\%$ | $> 2$ sd |
-| 0.75 | 0.00763 | 0.00764 $\pm$ 0.00001 | $+0.18\%$ | ties |
+| $s$ | learned static mask | ACS + variable density | gain | | LOUPE |
+|-----|--------------------|------------------------|------|--|-------|
+| 0.25 | **0.02355** | 0.02448 $\pm$ 0.00006 | $+3.79\%$ | $> 2$ sd | 0.02698 |
+| 0.40 | **0.01842** | 0.01882 $\pm$ 0.00005 | $+2.14\%$ | $> 2$ sd | 0.02245 |
+| 0.50 | **0.01521** | 0.01544 $\pm$ 0.00007 | $+1.49\%$ | $> 2$ sd | 0.02024 |
+| 0.75 | 0.00763 | 0.00765 $\pm$ 0.00001 | $+0.18\%$ | ties | 0.00974 |
 
-It is the best mask tested at every sparsity, and it also beats variable density
-under plain zero-filled reconstruction at three of four sparsities, so it is not
-exploiting one reconstructor's quirks. The gap between the relaxed and
+It is the best mask tested on NMSE and PSNR at every sparsity, and it also beats
+variable density under plain zero-filled reconstruction at three of four
+sparsities, so it is not exploiting one reconstructor's quirks. SSIM agrees at
+$s \leq 0.50$ against variable density, but center-concentrated masks (the
+relaxed profile, the energy oracle) score up to $0.7$ SSIM points ($\times 100$) higher
+at $s \geq 0.40$.
+
+We also ran LOUPE itself (Bahadir et al. 2020) as a baseline, ported to PyTorch,
+restricted to whole phase-encode rows, trained to mask convergence on the same
+split, and made budget-exact by top-$k$. Its mask is $14.6$–$33.1\%$ worse than
+ours under the judge, and worse than every heuristic at $s \geq 0.40$, despite
+training its reconstructor jointly with the mask. LOUPE's forward model FFTs a
+real magnitude image, so its k-space is Hermitian. Its masks follow that
+assumption: at $s = 0.25$–$0.50$ they contain only $7$ mirrored $\pm f$ row
+pairs (ours: $19$–$57$), and at $s = 0.75$ they sample one full half of
+k-space. On true complex k-space the two halves are not redundant, which is the
+most plausible cause of the gap. We therefore read this as a limitation of
+LOUPE's forward model for complex data, not of relaxation as such. The gap between the relaxed and
 combinatorial optimizers is not small: the relaxed profile lost by $1.5$–$2.3\%$
 where the discrete search won by $1.5$–$3.8\%$, on the same objective and data.
 

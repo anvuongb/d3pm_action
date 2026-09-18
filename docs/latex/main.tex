@@ -290,21 +290,23 @@ Optimizing the discrete mask directly against a reconstructor. Gradient-based re
 \begin{table}[t]
 \centering
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \hline
-$s$ & \textbf{Learned static} & \textbf{ACS + var.\ density} & \textbf{Gain} \\
+$s$ & \textbf{Learned static} & \textbf{ACS + var.\ density} & \textbf{Gain} & \textbf{LOUPE} \\
 \hline
-0.25 & \textbf{0.02355} & 0.02450 $\pm$ 0.00006 & $+3.79\%$ \\
-0.40 & \textbf{0.01842} & 0.01873 $\pm$ 0.00005 & $+2.14\%$ \\
-0.50 & \textbf{0.01521} & 0.01538 $\pm$ 0.00007 & $+1.49\%$ \\
-0.75 & 0.00763 & 0.00764 $\pm$ 0.00001 & $+0.18\%$ \\
+0.25 & \textbf{0.02355} & 0.02448 $\pm$ 0.00006 & $+3.79\%$ & 0.02698 \\
+0.40 & \textbf{0.01842} & 0.01882 $\pm$ 0.00005 & $+2.14\%$ & 0.02245 \\
+0.50 & \textbf{0.01521} & 0.01544 $\pm$ 0.00007 & $+1.49\%$ & 0.02024 \\
+0.75 & 0.00763 & 0.00765 $\pm$ 0.00001 & $+0.18\%$ & 0.00974 \\
 \hline
 \end{tabular}
-\caption{Held-out val NMSE under the judge U-Net B. The first three gains exceed $2$ seed standard deviations; $s=0.75$ is a tie.}
+\caption{Held-out val NMSE under the judge U-Net B. The first three gains over variable density exceed $2$ seed standard deviations; $s=0.75$ is a tie. LOUPE \citep{bahadir2020loupe}: row-restricted, trained to mask convergence, budget-exact top-$k$.}
 \label{tab:mri-main}
 \end{table}
 
-It is the best mask tested at every sparsity, and it also beats variable density under plain zero-filled reconstruction at three of four sparsities, so it is not exploiting one reconstructor's quirks. The gap between the relaxed and combinatorial optimizers is not small: the relaxed profile lost by $1.5$--$2.3\%$ where the discrete search won by $1.5$--$3.8\%$, on the same objective and data.
+It is the best mask tested on NMSE and PSNR at every sparsity, and it also beats variable density under plain zero-filled reconstruction at three of four sparsities, so it is not exploiting one reconstructor's quirks. SSIM agrees at $s \leq 0.50$ against variable density, but center-concentrated masks (the relaxed profile, the energy oracle) score up to $0.7$ SSIM points ($\times 100$) higher at $s \geq 0.40$.
+
+We also ran LOUPE itself \citep{bahadir2020loupe} as a baseline, ported to PyTorch, restricted to whole phase-encode rows, trained to mask convergence on the same split, and made budget-exact by top-$k$. Its mask is $14.6$--$33.1\%$ worse than ours under the judge, and worse than every heuristic at $s \geq 0.40$, despite training its reconstructor jointly with the mask. LOUPE's forward model FFTs a real magnitude image, so its k-space is Hermitian. Its masks follow that assumption: at $s = 0.25$--$0.50$ they contain only $7$ mirrored $\pm f$ row pairs (ours: $19$--$57$), and at $s = 0.75$ they sample one full half of k-space. On true complex k-space the two halves are not redundant, which is the most plausible cause of the gap. We therefore read this as a limitation of LOUPE's forward model for complex data, not of relaxation as such. The gap between the relaxed and combinatorial optimizers is not small: the relaxed profile lost by $1.5$--$2.3\%$ where the discrete search won by $1.5$--$3.8\%$, on the same objective and data.
 
 \subsection{Two controls worth adopting}
 \textbf{The judge matters.} Scored against the reconstructor it was optimized against, the relaxed profile reads $-0.49\%$ versus variable density at $s = 0.40$; against an independently trained judge it reads $-1.97\%$. A full $1.5$ pp of apparent mask quality was overfitting to one reconstructor.

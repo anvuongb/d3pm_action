@@ -68,15 +68,32 @@ Val NMSE under the held-out judge (lower is better; **bold** = best at that s):
 | policy, instance-adaptive | 0.02785 | 0.01958 | 0.01610 | 0.00797 |
 | acs_equispaced | 0.02591 | 0.01977 | 0.01590 | 0.00880 |
 | acs_random | 0.02661 | 0.02072 | 0.01734 | 0.00923 |
+| LOUPE rows (Bahadir et al. 2020) | 0.02698 | 0.02245 | 0.02024 | 0.00974 |
 
-Margin of the learned mask over the best heuristic, with the seed spread:
+LOUPE is the relaxation-based learned-sampling baseline, restricted to whole
+phase-encode rows and made budget-exact by top-k. It is 14.6–33.1% behind the
+hill-climbed mask and last or near-last at every s. Its forward model assumes
+Hermitian k-space, and its masks avoid mirrored ±f rows accordingly; see
+`docs/loupe_results.md` for the protocol, caveats and mechanism.
+
+Margin of the learned mask over the best heuristic, with the seed spread. The
+heuristic column comes from the same evaluation as the margins
+(`eval_b5b_hillclimb.json`). The table above takes its heuristic values from the
+B5 evaluation, which used a different seed stream, so the two can differ in the
+4th significant digit:
 
 | s | hill climb | acs_vd_gaussian | gain | |
 |---|-----------|-----------------|------|--|
-| 0.25 | 0.02355 | 0.02450 ± 0.00006 | **+3.79%** | beats, > 2 sd |
-| 0.40 | 0.01842 | 0.01873 ± 0.00005 | **+2.14%** | beats, > 2 sd |
-| 0.50 | 0.01521 | 0.01538 ± 0.00007 | **+1.49%** | beats, > 2 sd |
-| 0.75 | 0.00763 | 0.00764 ± 0.00001 | +0.18% | ties |
+| 0.25 | 0.02355 | 0.02448 ± 0.00006 | **+3.79%** | beats, > 2 sd |
+| 0.40 | 0.01842 | 0.01882 ± 0.00005 | **+2.14%** | beats, > 2 sd |
+| 0.50 | 0.01521 | 0.01544 ± 0.00007 | **+1.49%** | beats, > 2 sd |
+| 0.75 | 0.00763 | 0.00765 ± 0.00001 | +0.18% | ties |
+
+The margins are NMSE. PSNR agrees: hill climb is best at every s. SSIM does
+not fully agree: at s ≥ 0.40 the B5 profile and the energy oracle, whose masks
+are center-concentrated, score 0.3–0.7 SSIM points (×100) higher, and at
+s=0.75 hill climb is 0.12 points below `acs_vd_gaussian`. See
+`docs/loupe_results.md` §Figures.
 
 **Not an artefact of the reconstructor.** The same mask also beats
 `acs_vd_gaussian` under plain zero-filled reconstruction at three of four
