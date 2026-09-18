@@ -69,3 +69,47 @@ def test_row_mask_is_constant_along_readout() -> None:
 def test_native_mask_is_two_dimensional() -> None:
     m = Loupe(64, 48, SPARSITY, rows=False, filt=4)
     assert m.prob().shape == (1, 1, 64, 48)
+
+
+def test_unshifted_rows_land_centred() -> None:
+    """LOUPE learns in unshifted k-space (DC at row 0). After conversion its
+    low-frequency preference must land at the centre of our fftshift grid, not
+    the edges -- getting this wrong makes LOUPE look catastrophically bad."""
+    from train_loupe_baseline import H, budget_exact_rows
+
+    k = int(SPARSITY * H)
+    freq = torch.minimum(torch.arange(H), H - torch.arange(H))   # |f| in unshifted order
+    prob = (1.0 / (1.0 + freq.float())).view(1, 1, H, 1)
+    rows = budget_exact_rows(prob, SPARSITY, torch.device("cpu")).flatten().nonzero().flatten()
+    assert len(rows) == k
+    assert H // 2 in rows.tolist()                                # DC is selected
+    assert rows.max() - rows.min() == k - 1                       # one contiguous block
+    assert abs(rows.float().mean() - H / 2) <= 1.0                # centred
+
+
+def test_train_loupe_learns_and_stops_on_patience(tmp_path) -> None:
+    """Tiny CPU run: the mask logits get gradient, churn is tracked, the
+    checkpoint round-trips, and a converged checkpoint is not trained further."""
+    from train_loupe_baseline import H, train_loupe
+
+    torch.manual_seed(0)
+    imgs = torch.rand(4, 1, H, H)
+    ck = tmp_path / "ck.pt"
+    _m, hist = train_loupe(imgs, SPARSITY, True, torch.device("cpu"), epochs=2, filt=2,
+                           batch=4, log=lambda *a, **k: None, ckpt=ck)
+    assert len(hist) == 2 and ck.is_file()
+    assert all(h["logit_grad"] > 0 for h in hist)
+    assert {"mae", "mask_churn", "p_saturated"} <= hist[0].keys()
+    # Resuming recounts the settled streak from the saved history, under the
+    # current tolerance: churn 1 per epoch is settled at tol=2% of 75 rows (=1).
+    st = torch.load(ck, weights_only=False)
+    for h in st["history"]:
+        h["mask_churn"] = 1
+    torch.save(st, ck)
+    _m, hist2 = train_loupe(imgs, SPARSITY, True, torch.device("cpu"), epochs=5, filt=2,
+                            batch=4, log=lambda *a, **k: None, ckpt=ck, patience=2,
+                            churn_tol=0.02)
+    assert len(hist2) == 2                    # already converged: not trained further
+    _m, hist3 = train_loupe(imgs, SPARSITY, True, torch.device("cpu"), epochs=3, filt=2,
+                            batch=4, log=lambda *a, **k: None, ckpt=ck, patience=2)
+    assert len(hist3) == 3                    # strict rule: churn 1 is not settled
