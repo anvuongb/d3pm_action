@@ -96,6 +96,7 @@ docs/latex/*.bbl
 docs/latex/*.out
 docs/latex/*.toc
 docs/latex/figures/*.aux
+docs/latex/main.pdf
 
 # Misc local test output
 test/
