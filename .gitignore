@@ -22,6 +22,11 @@ models_mask_gen_fastmri_infonce/
 models_d3pm_fastmri_fine/
 models_d3pm_fastmri_coarse/
 models_d3pm_fastmri_coarse_kspace/
+models_d3pm_fastmri_coarse_kspace_100ep/
+models_d3pm_fastmri_fine_100ep/
+models_recon_unet/
+models_static_profile/
+models_hill_climb/
 .uv_cache/
 ckpt/
 *.pth

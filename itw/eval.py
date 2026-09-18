@@ -33,8 +33,15 @@ from .masks import (
     gumbel_row_mask_acs_locked,
     magnitude_from_kspace,
 )
+from .configs import seed_everything
 from .schedule import sparsity_to_timestep
-from .train import coarse_profile, discretize, forward_mask_logits, mask_generator_cond
+from .train import (
+    build_dataloader,
+    coarse_profile,
+    discretize,
+    forward_mask_logits,
+    mask_generator_cond,
+)
 
 
 def random_mask_batch(
@@ -277,6 +284,41 @@ def acs_lock_topk_from_logits(
         m[idx] = 1.0
         masks.append(m)
     return torch.stack(masks, dim=0).view(b, 1, h, 1)
+
+
+def topk_row_mask_from_logits(
+    logits: torch.Tensor,
+    sparsity: torch.Tensor,
+) -> torch.Tensor:
+    """Budget-exact top-k rows by keep-logit, no ACS constraint. [B,1,H,1]."""
+    b, _, h, _ = logits.shape
+    keep = logits[..., 1]
+    masks = []
+    for i in range(b):
+        k = _row_budget(sparsity[i], h)
+        m = torch.zeros(h, device=logits.device, dtype=keep.dtype)
+        if k > 0:
+            _, idx = torch.topk(keep[i, 0], k)
+            m[idx] = 1.0
+        masks.append(m)
+    return torch.stack(masks, dim=0).view(b, 1, h, 1)
+
+
+def learned_rows_topk(
+    cfg,
+    row_logits: torch.Tensor,
+    sparsity: torch.Tensor,
+) -> torch.Tensor:
+    """Budget-exact learned mask; ACS-locked when ``cfg.acs_lock``.
+
+    Deterministic given the logits, so the primary learned metric carries no
+    Gumbel sampling noise and its density is exactly ``floor(s*H)/H`` (B1).
+    """
+    if getattr(cfg, "acs_lock", False):
+        return acs_lock_topk_from_logits(
+            row_logits, sparsity, int(getattr(cfg, "scout_size", 32))
+        )
+    return topk_row_mask_from_logits(row_logits, sparsity)
 
 
 @torch.no_grad()
@@ -714,12 +756,23 @@ def evaluate_fastmri_baselines_loader(
     max_batches: int = 10,
     baselines: tuple[str, ...] = ("random", "equispaced", "vd_gaussian", "acs_random"),
     include_learned_acs_lock: bool = False,
+    learned_mask: str = "gumbel",
+    include_learned_gumbel: bool = False,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """Learned policy vs MRI row-mask baselines at several sparsities.
 
     ``include_learned_acs_lock`` adds a post-hoc ACS + top-k remainder mask
     from the same logits (eval-only; independent of ``cfg.acs_lock``).
+
+    ``learned_mask`` selects what ``learned`` means: "gumbel" (pre-B1 default,
+    stochastic and *not* budget-exact) or "topk" (deterministic, exact budget).
+    Density is only comparable to the baselines under "topk"; with
+    ``include_learned_gumbel`` the stochastic variant is reported alongside as
+    ``learned_gumbel``.
     """
+    if learned_mask not in ("gumbel", "topk"):
+        raise ValueError(f"learned_mask must be 'gumbel' or 'topk', got {learned_mask}")
+    report_gumbel = include_learned_gumbel and learned_mask == "topk"
     model.eval()
     if d3pm_fine is not None:
         d3pm_fine.eval()
@@ -729,6 +782,8 @@ def evaluate_fastmri_baselines_loader(
     method_names = ("learned",) + baselines
     if include_learned_acs_lock:
         method_names = method_names + ("learned_acs_lock",)
+    if report_gumbel:
+        method_names = method_names + ("learned_gumbel",)
 
     for s in sparsities:
         key = sparsity_key(s)
@@ -746,8 +801,16 @@ def evaluate_fastmri_baselines_loader(
 
             row_logits = model(mask_generator_cond(cfg, z, kspace), sparsity)
             named_masks = {
-                "learned": _learned_gumbel_rows(cfg, row_logits, sparsity)
+                "learned": (
+                    learned_rows_topk(cfg, row_logits, sparsity)
+                    if learned_mask == "topk"
+                    else _learned_gumbel_rows(cfg, row_logits, sparsity)
+                )
             }
+            if report_gumbel:
+                named_masks["learned_gumbel"] = _learned_gumbel_rows(
+                    cfg, row_logits, sparsity
+                )
             if include_learned_acs_lock:
                 named_masks["learned_acs_lock"] = acs_lock_topk_from_logits(
                     row_logits, sparsity, acs_width
@@ -804,6 +867,119 @@ def evaluate_fastmri_baselines_loader(
                 report[key][name]["psnr"] - learned_psnr
             )
     return report
+
+
+def _mean_std(values: list[float]) -> dict[str, float]:
+    n = len(values)
+    mean = sum(values) / max(n, 1)
+    if n < 2:
+        return {"mean": mean, "std": 0.0, "n_seeds": n}
+    var = sum((v - mean) ** 2 for v in values) / (n - 1)
+    return {"mean": mean, "std": var**0.5, "n_seeds": n}
+
+
+def fastmri_loader_factory(cfg):
+    """``seed -> DataLoader`` for ``cfg``'s split, varying only the RNG."""
+    from dataclasses import replace
+
+    def _factory(seed: int):
+        return build_dataloader(replace(cfg, seed=seed))
+
+    return _factory
+
+
+@torch.no_grad()
+def evaluate_fastmri_baselines_seeded(
+    model,
+    d3pm_fine,
+    d3pm_coarse,
+    cfg,
+    loader_factory,
+    fine_survival: torch.Tensor,
+    coarse_survival: torch.Tensor,
+    sparsities: tuple[float, ...] = (0.1, 0.25, 0.4),
+    max_batches: int = 1_000_000,
+    baselines: tuple[str, ...] = ("random", "equispaced", "vd_gaussian", "acs_random"),
+    seeds: tuple[int, ...] = (0, 1, 2, 3, 4),
+    learned_mask: str = "topk",
+    include_learned_gumbel: bool = True,
+    include_learned_acs_lock: bool = False,
+    reference: str = "learned",
+    paired_metrics: tuple[str, ...] = ("nmse", "ssim", "h_coarse"),
+) -> dict:
+    """Multi-seed, paired wrapper around ``evaluate_fastmri_baselines_loader``.
+
+    Each seed is one complete pass, so a seed yields one paired sample per
+    method. Reports per-metric mean/std across seeds plus, for every non-
+    reference method, the per-seed delta against ``reference`` (paired: same
+    data and same mask RNG within a seed). Pre-B1 single-draw numbers are a
+    one-sample special case of this and carry no error bar.
+    """
+    per_seed: list[dict] = []
+    for seed in seeds:
+        seed_everything(int(seed))
+        loader = loader_factory(int(seed))
+        per_seed.append(
+            evaluate_fastmri_baselines_loader(
+                model,
+                d3pm_fine,
+                d3pm_coarse,
+                cfg,
+                loader,
+                fine_survival,
+                coarse_survival,
+                sparsities=sparsities,
+                max_batches=max_batches,
+                baselines=baselines,
+                include_learned_acs_lock=include_learned_acs_lock,
+                learned_mask=learned_mask,
+                include_learned_gumbel=include_learned_gumbel,
+            )
+        )
+
+    out: dict = {}
+    for s in sparsities:
+        key = sparsity_key(s)
+        methods = list(per_seed[0][key].keys())
+        out[key] = {}
+        for name in methods:
+            metrics = [m for m in per_seed[0][key][name] if not m.startswith("delta_")]
+            agg = {
+                mk: {
+                    **_mean_std([r[key][name][mk] for r in per_seed]),
+                    "values": [r[key][name][mk] for r in per_seed],
+                }
+                for mk in metrics
+            }
+            if name != reference and reference in per_seed[0][key]:
+                paired = {}
+                for mk in paired_metrics:
+                    if mk not in per_seed[0][key][name]:
+                        continue
+                    deltas = [
+                        r[key][name][mk] - r[key][reference][mk] for r in per_seed
+                    ]
+                    stats = _mean_std(deltas)
+                    paired[mk] = {
+                        "delta_mean": stats["mean"],
+                        "delta_std": stats["std"],
+                        "n_seeds_method_lower": sum(1 for d in deltas if d < 0),
+                        "n_seeds": len(deltas),
+                    }
+                agg[f"paired_vs_{reference}"] = paired
+            out[key][name] = agg
+    out["_protocol"] = {
+        "seeds": list(seeds),
+        "learned_mask": learned_mask,
+        "data_split": getattr(cfg, "data_split", "train"),
+        "reference": reference,
+        "max_batches": max_batches,
+        "note": (
+            "learned_mask=topk is budget-exact and deterministic; seed varies "
+            "stochastic baselines and (if reported) learned_gumbel only."
+        ),
+    }
+    return out
 
 
 @torch.no_grad()

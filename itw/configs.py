@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import random
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
+import numpy as np
 import torch
 
 
@@ -17,6 +19,21 @@ def default_fastmri_root() -> str:
     return os.environ.get(
         "FASTMRI_ROOT", "/home/anvuong/data/fast_mri/singlecoil_train"
     )
+
+
+def default_fastmri_val_root() -> str:
+    return os.environ.get(
+        "FASTMRI_VAL_ROOT", "/home/anvuong/data/fast_mri/singlecoil_val"
+    )
+
+
+def seed_everything(seed: int) -> None:
+    """Seed python/numpy/torch RNGs. Call before building a seeded dataloader."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 @dataclass
@@ -50,6 +67,9 @@ class ITWConfig:
     log_file: str = "train.log"
     save_every: int = 10
     schedule_calibration_batches: int = 20
+
+    # ``None`` keeps the pre-B1 nondeterministic behaviour; eval paths set it.
+    seed: int | None = None
 
     device: str = field(default_factory=default_device)
 
@@ -96,6 +116,10 @@ class FastMRIConfig(ITWConfig):
     multichannel: bool = False
     mask_arch: Literal["spatial", "mlp", "cartesian_row"] = "cartesian_row"
     data_root: str = field(default_factory=default_fastmri_root)
+    val_root: str = field(default_factory=default_fastmri_val_root)
+    # "train" shuffles and drops the last partial batch; "val" is deterministic
+    # order over the full held-out split (B1).
+    data_split: Literal["train", "val"] = "train"
     scout_size: int = 32
     batch_size: int = 8
     num_workers: int = 4

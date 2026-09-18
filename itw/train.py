@@ -200,6 +200,13 @@ def build_mask_model(cfg: ITWConfig) -> torch.nn.Module:
     return SpatialMaskGenerator(in_channels=1, size=cfg.image_size).to(cfg.device)
 
 
+def fastmri_split_root(cfg: FastMRIConfig) -> str:
+    """Root dir for the configured FastMRI split ("train" or "val")."""
+    if getattr(cfg, "data_split", "train") == "val":
+        return cfg.val_root
+    return cfg.data_root
+
+
 def build_dataloader(cfg: ITWConfig) -> DataLoader:
     if cfg.dataset == "mnist":
         dataset = MNIST(
@@ -222,19 +229,28 @@ def build_dataloader(cfg: ITWConfig) -> DataLoader:
     elif cfg.dataset == "fastmri":
         assert isinstance(cfg, FastMRIConfig)
         dataset = FastMRIDataset(
-            cfg.data_root,
+            fastmri_split_root(cfg),
             scout_size=cfg.scout_size,
             target_dim=cfg.image_size,
         )
     else:
         raise ValueError(f"Unknown dataset: {cfg.dataset}")
 
+    # Held-out eval (B1) walks the full split in file order; training shuffles
+    # and drops the ragged tail so batch shapes stay fixed.
+    is_val = getattr(cfg, "data_split", "train") == "val"
+    generator = None
+    if cfg.seed is not None:
+        generator = torch.Generator()
+        generator.manual_seed(int(cfg.seed))
+
     return DataLoader(
         dataset,
         batch_size=cfg.batch_size,
-        shuffle=True,
+        shuffle=not is_val,
         num_workers=cfg.num_workers,
-        drop_last=cfg.dataset == "fastmri",
+        drop_last=cfg.dataset == "fastmri" and not is_val,
+        generator=generator,
     )
 
 

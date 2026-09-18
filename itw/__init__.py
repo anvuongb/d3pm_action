@@ -1,6 +1,12 @@
 """ITW: information-theoretic mask generation for active sensing."""
 
-from .configs import CIFAR10Config, FastMRIConfig, ITWConfig, MNISTConfig
+from .configs import (
+    CIFAR10Config,
+    FastMRIConfig,
+    ITWConfig,
+    MNISTConfig,
+    seed_everything,
+)
 from .data import FastMRIDataset
 from .discrete import (
     apply_row_absorbing_observation,
@@ -38,6 +44,10 @@ from .eval import (
     acs_vd_gaussian_row_mask_batch,
     acs_equispaced_row_mask_batch,
     acs_lock_topk_from_logits,
+    evaluate_fastmri_baselines_seeded,
+    fastmri_loader_factory,
+    learned_rows_topk,
+    topk_row_mask_from_logits,
     save_eval_report,
 )
 from .infonce import InfoNCELoss, ProjectionHead
@@ -72,6 +82,7 @@ from .schedule import (
 from .train import (
     build_dataloader,
     build_mask_model,
+    fastmri_split_root,
     load_d3pm,
     load_d3pm_coarse,
     load_d3pm_fine,
@@ -151,6 +162,12 @@ __all__ = [
     "evaluate_fastmri_nested_loader",
     "evaluate_fastmri_nested_ablation",
     "evaluate_fastmri_baselines_loader",
+    "evaluate_fastmri_baselines_seeded",
+    "fastmri_loader_factory",
+    "learned_rows_topk",
+    "topk_row_mask_from_logits",
+    "fastmri_split_root",
+    "seed_everything",
     "random_row_mask_batch",
     "equispaced_row_mask_batch",
     "vd_gaussian_row_mask_batch",
