@@ -1,5 +1,12 @@
 # FastMRI policy improvements
 
+> **SUPERSEDED — see `fastmri_results.md`.** All Stage 1-6 numbers are
+> training-set, single-draw, and use the pre-F9 NMSE (~4x low; see F9 in
+> `fastmri_eval_integrity.md`). Masks were not budget-matched, which inflates
+> learned-vs-`acs_random` margins by roughly 2x (F4). The headline "beats
+> uniform random" survives; "beats the MRI baselines" does not. Kept as a
+> development record.
+
 Six-stage path after beating uniform random: fair MRI baselines, loss ablations, honest plots/metrics, ACS-kspace policy input, then (only if needed) a mask-sensitive fine prior and a 30-epoch protocol. Eval and report after every stage.
 
 ## Current checkpoint

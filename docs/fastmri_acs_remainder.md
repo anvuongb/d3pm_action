@@ -1,5 +1,13 @@
 # ACS-locked remainder policy
 
+> **SUPERSEDED — see `fastmri_results.md`.** A1-A4 numbers are training-set,
+> single-draw and pre-F9 (~4x low). The "winning recipe" section recommends the
+> A2 checkpoint: on held-out data with budget-exact masks it is indistinguishable
+> from the 50-epoch P3 policy (F5), and both lose to `acs_vd_gaussian` under a
+> real reconstructor. The best mask found in this project is the discrete
+> hill-climbed static mask (B5b), not a conditional policy. Kept as a
+> development record.
+
 Bottleneck from the six-stage run: zero-filled Cartesian NMSE is dominated by the center PE block. ACS+random ~0.01 NMSE vs best learned ~0.09 at \(s=0.25\). Nested \(H_c\) prefers the learned masks. Independent Gumbel over 300 rows has no ACS inductive bias. Fine prior is dead (\(\beta=0\)). More epochs do not help.
 
 **Keep** parent ckpt `models_mask_gen_fastmri_nested/mask_gen_fastmri_final.pth` (10-epoch image-\(Z\) `both`). Do not overwrite. Do not load `models_mask_gen_fastmri/`. Stage 4 ACS-kspace upsample head is a failed architecture — do not reuse it.

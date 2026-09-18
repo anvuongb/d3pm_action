@@ -1,5 +1,12 @@
 # FastMRI from-scratch protocol (A4 winning recipe)
 
+> **SUPERSEDED — see `fastmri_results.md`.** Every number below is a
+> *training-set*, single-draw, density-unmatched measurement taken with the
+> pre-F9 NMSE (a 1e-8 denominator floor active on ~2/3 of slices, reading ~4x
+> low). Specifically: P4's "50ep does not beat A2 10ep" is superseded —
+> budget-matched the two are equivalent (F5); and the P3 survival-table
+> monotonicity warning was a false alarm (F1). Kept as a development record.
+
 From-scratch priors, then a 50-epoch ACS-lock policy. Do **not** overwrite:
 
 - `models_d3pm_fastmri_coarse_kspace/`
