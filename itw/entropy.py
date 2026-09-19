@@ -63,12 +63,21 @@ def d3pm_cond_entropy_loss(
     cond: torch.Tensor,
     mask: torch.Tensor,
     normalize: bool = True,
+    region: str = "observed",
 ) -> torch.Tensor:
     """
     Conditional-entropy proxy. D3PM weights must be frozen; gradients flow
     through y (and thus the mask) via the forward pass.
+
+    ``region="observed"`` averages over the observed pixels only (the original
+    objective; degenerate, see ``ITWConfig.entropy_region``). ``region="all"``
+    averages over every pixel, so the mask acts only through ``y``.
     """
     logits = d3pm.model_predict(y, t, cond)
+    if region == "all":
+        return mean_cond_entropy(logits)
+    if region != "observed":
+        raise ValueError(f"unknown entropy region: {region}")
     return masked_cond_entropy(logits, mask, normalize=normalize)
 
 

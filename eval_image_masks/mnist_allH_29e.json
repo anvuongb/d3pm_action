@@ -1,0 +1,73 @@
+{
+  "s=0.10": {
+    "acc_unobserved_learned": 0.9749947547912597,
+    "acc_unobserved_fg_learned": 0.8176747590303421,
+    "informative_frac_learned": 0.40481380820274354,
+    "acc_unobserved_random": 0.9460967272520066,
+    "acc_unobserved_fg_random": 0.7269336968660355,
+    "informative_frac_random": 0.09239813424646855,
+    "h_learned": 0.05599900986999273,
+    "h_random": 0.06472640987485648,
+    "delta_h": 0.00872740000486374,
+    "sparsity_err_learned": 0.010815276531502604,
+    "sparsity_err_random": 0.0003906264901161194,
+    "mean_sparsity_learned": 0.10685272216796875,
+    "mean_sparsity_target": 0.10000000149011612
+  },
+  "s=0.30": {
+    "acc_unobserved_learned": 0.9863506883382798,
+    "acc_unobserved_fg_learned": 0.8496648371219635,
+    "informative_frac_learned": 0.21418367996811866,
+    "acc_unobserved_random": 0.9638102531433106,
+    "acc_unobserved_fg_random": 0.8173371583223343,
+    "informative_frac_random": 0.09368255957961083,
+    "h_learned": 0.04877324718981981,
+    "h_random": 0.05121975298970938,
+    "delta_h": 0.0024465057998895646,
+    "sparsity_err_learned": 0.011387400794774294,
+    "sparsity_err_random": 0.00019532442092895508,
+    "mean_sparsity_learned": 0.3064098358154297,
+    "mean_sparsity_target": 0.30000001192092896
+  },
+  "s=0.50": {
+    "acc_unobserved_learned": 0.989989361166954,
+    "acc_unobserved_fg_learned": 0.8517999053001404,
+    "informative_frac_learned": 0.15490027144551277,
+    "acc_unobserved_random": 0.9694908142089844,
+    "acc_unobserved_fg_random": 0.8472896099090577,
+    "informative_frac_random": 0.09397811889648437,
+    "h_learned": 0.04625183548778296,
+    "h_random": 0.04759209044277668,
+    "delta_h": 0.0013402549549937249,
+    "sparsity_err_learned": 0.010956573486328124,
+    "sparsity_err_random": 0.0,
+    "mean_sparsity_learned": 0.5034378051757813,
+    "mean_sparsity_target": 0.5
+  },
+  "s=0.70": {
+    "acc_unobserved_learned": 0.9934772789478302,
+    "acc_unobserved_fg_learned": 0.8580144792795181,
+    "informative_frac_learned": 0.12441572658717633,
+    "acc_unobserved_random": 0.9725226193666459,
+    "acc_unobserved_fg_random": 0.8610278457403183,
+    "informative_frac_random": 0.09412918388843536,
+    "h_learned": 0.04497262947261334,
+    "h_random": 0.04560620319098234,
+    "delta_h": 0.0006335737183690071,
+    "sparsity_err_learned": 0.010412524454295635,
+    "sparsity_err_random": 0.00019532442092895508,
+    "mean_sparsity_learned": 0.7038578033447266,
+    "mean_sparsity_target": 0.699999988079071
+  },
+  "_meta": {
+    "dataset": "mnist",
+    "checkpoint": "models_mask_gen_mnist_allH/mask_gen_mnist_29e.pth",
+    "entropy_region": "all",
+    "sparsity_loss_weight": 10.0,
+    "batch_size": 512,
+    "epochs": 200,
+    "split": "test",
+    "eval_batches": 20,
+    "eval_batch_size": 128
+  }
+}

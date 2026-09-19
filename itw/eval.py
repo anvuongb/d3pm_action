@@ -322,6 +322,49 @@ def learned_rows_topk(
 
 
 @torch.no_grad()
+def _proxy_free_metrics(d3pm, y, t, cond, mask, x_disc) -> dict[str, float]:
+    """Criteria the mask was not trained on, so a proxy win can be checked.
+
+    ``acc_unobserved``: the D3PM's argmax prediction of the hidden pixels.
+    ``acc_unobserved_fg``: the same, restricted to hidden pixels whose true
+    value is nonzero. On MNIST ~90% of pixels are background, so predicting
+    all-black already scores ~0.90 on ``acc_unobserved``; this one does not.
+    Both hidden-only accuracies are biased across masks: a mask that observes
+    more of the object leaves fewer, harder object pixels hidden. The fair
+    comparison scores the whole reconstruction (observed pixels take their
+    measured value, hidden ones the D3PM's argmax):
+    ``acc_full`` over every pixel and ``recall_fg`` over every nonzero pixel.
+    ``mse`` / ``psnr``: pixel error of the same reconstruction on the [0, 1]
+    scale, with hidden pixels at the D3PM's posterior mean (the MSE-optimal
+    estimate) rather than its argmax; PSNR is per image, then averaged.
+    ``informative_frac``: share of observed pixels whose value in ``y`` differs
+    from the absorbing token 0; an observed-but-absorbing pixel tells the model
+    nothing (on binary MNIST, every observed background pixel).
+    """
+    logits = d3pm.model_predict(y, t, cond)
+    m = mask.expand_as(x_disc) if mask.shape[1] != x_disc.shape[1] else mask
+    hidden = m < 0.5
+    correct = logits.argmax(dim=-1) == x_disc
+    acc = correct[hidden].float().mean().item() if hidden.any() else float("nan")
+    hidden_fg = hidden & (x_disc != 0)
+    acc_fg = correct[hidden_fg].float().mean().item() if hidden_fg.any() else float("nan")
+    observed = ~hidden
+    informative = (y[observed] != 0).float().mean().item() if observed.any() else float("nan")
+    recon_ok = torch.where(observed, torch.ones_like(correct), correct)
+    fg = x_disc != 0
+    recall = recon_ok[fg].float().mean().item() if fg.any() else float("nan")
+    levels = torch.linspace(0, 1, logits.shape[-1], device=logits.device)
+    post_mean = logits.float().softmax(dim=-1) @ levels
+    recon = torch.where(observed, levels[x_disc], post_mean)
+    mse = (recon - levels[x_disc]).pow(2).flatten(1).mean(dim=1)
+    psnr = 10 * torch.log10(1.0 / mse.clamp_min(1e-10))
+    return {"acc_unobserved": acc, "acc_unobserved_fg": acc_fg,
+            "acc_full": recon_ok.float().mean().item(), "recall_fg": recall,
+            "mse": mse.mean().item(), "psnr": psnr.mean().item(),
+            "informative_frac": informative}
+
+
+@torch.no_grad()
 def evaluate_batch(
     d3pm,
     model,
@@ -352,8 +395,15 @@ def evaluate_batch(
         x_disc, random_m, cfg.num_classes, multichannel=cfg.multichannel
     )
 
-    h_learned = d3pm_cond_entropy_loss(d3pm, y_learned, t, cond, learned_mask).item()
-    h_random = d3pm_cond_entropy_loss(d3pm, y_random, t, cond, random_m).item()
+    region = getattr(cfg, "entropy_region", "observed")
+    h_learned = d3pm_cond_entropy_loss(d3pm, y_learned, t, cond, learned_mask,
+                                       region=region).item()
+    h_random = d3pm_cond_entropy_loss(d3pm, y_random, t, cond, random_m,
+                                      region=region).item()
+    indep = {}
+    for name, m, y in (("learned", learned_mask, y_learned), ("random", random_m, y_random)):
+        indep.update({f"{k}_{name}": v for k, v in
+                      _proxy_free_metrics(d3pm, y, t, cond, m, x_disc).items()})
 
     learned_density = learned_mask.mean(dim=(1, 2, 3))
     random_density = random_m.mean(dim=(1, 2, 3))
@@ -361,6 +411,7 @@ def evaluate_batch(
     sparsity_err_random = F.l1_loss(random_density, sparsity).item()
 
     return {
+        **indep,
         "h_learned": h_learned,
         "h_random": h_random,
         "delta_h": h_random - h_learned,

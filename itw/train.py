@@ -211,19 +211,21 @@ def build_dataloader(cfg: ITWConfig) -> DataLoader:
     if cfg.dataset == "mnist":
         dataset = MNIST(
             "./data",
-            train=True,
+            train=cfg.data_split != "val",
             download=True,
             transform=transforms.Compose(
                 [transforms.ToTensor(), transforms.Pad(2)]
             ),
         )
     elif cfg.dataset == "cifar10":
+        train = cfg.data_split != "val"
         dataset = CIFAR10(
             "./data",
-            train=True,
+            train=train,
             download=True,
             transform=transforms.Compose(
-                [transforms.RandomHorizontalFlip(), transforms.ToTensor()]
+                ([transforms.RandomHorizontalFlip()] if train else [])
+                + [transforms.ToTensor()]
             ),
         )
     elif cfg.dataset == "fastmri":
@@ -322,7 +324,8 @@ def train_mask_generator(
                 multichannel=cfg.multichannel,
             )
 
-            hxy_loss = d3pm_cond_entropy_loss(d3pm, y, t.to(cfg.device), cond, mask)
+            hxy_loss = d3pm_cond_entropy_loss(d3pm, y, t.to(cfg.device), cond, mask,
+                                              region=cfg.entropy_region)
             sparsity_loss = mask_loss(
                 mask,
                 sparsity,

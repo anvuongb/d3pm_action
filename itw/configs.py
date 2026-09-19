@@ -61,6 +61,15 @@ class ITWConfig:
     gumbel_temperature_start: float = 1.0
     gumbel_temperature_end: float = 0.5
     binarization_weight: float = 0.0
+    # Where the image-domain H(C|Y) proxy is averaged. "observed" (the original
+    # objective) scores entropy only on the pixels the mask observes, which is
+    # minimised by observing trivially predictable pixels: on MNIST the learned
+    # mask observed 100% background and 0% of the digit at s <= 0.5. "all"
+    # averages over every pixel given y, so an observation only helps through
+    # what it adds to y.
+    entropy_region: Literal["observed", "all"] = "observed"
+    # MNIST/CIFAR: "val" reads the held-out test split, unshuffled.
+    data_split: Literal["train", "val"] = "train"
 
     # io
     save_dir: str = "models_mask_gen"

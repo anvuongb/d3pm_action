@@ -1,0 +1,65 @@
+{
+  "s=0.10": {
+    "acc_unobserved_learned": 0.9035003632307053,
+    "informative_frac_learned": 0.0,
+    "acc_unobserved_random": 0.9438855886459351,
+    "informative_frac_random": 0.09239813424646855,
+    "h_learned": 0.0002407982072327286,
+    "h_random": 0.06570773646235466,
+    "delta_h": 0.06546693825512193,
+    "sparsity_err_learned": 0.004192886047530919,
+    "sparsity_err_random": 0.0003906264901161194,
+    "mean_sparsity_learned": 0.10111885070800782,
+    "mean_sparsity_target": 0.10000000149011612
+  },
+  "s=0.30": {
+    "acc_unobserved_learned": 0.8761412382125855,
+    "informative_frac_learned": 0.0,
+    "acc_unobserved_random": 0.9559127658605575,
+    "informative_frac_random": 0.09368255957961083,
+    "h_learned": 0.000207975109515246,
+    "h_random": 0.06489987820386886,
+    "delta_h": 0.06469190309435362,
+    "sparsity_err_learned": 0.004730377718806267,
+    "sparsity_err_random": 0.00019532442092895508,
+    "mean_sparsity_learned": 0.2996665954589844,
+    "mean_sparsity_target": 0.30000001192092896
+  },
+  "s=0.50": {
+    "acc_unobserved_learned": 0.8274595767259598,
+    "informative_frac_learned": 0.00011118275324406568,
+    "acc_unobserved_random": 0.9576820373535156,
+    "informative_frac_random": 0.09397811889648437,
+    "h_learned": 0.00035701497399713843,
+    "h_random": 0.06540020368993282,
+    "delta_h": 0.06504318871593569,
+    "sparsity_err_learned": 0.004738998413085937,
+    "sparsity_err_random": 0.0,
+    "mean_sparsity_learned": 0.5009395599365234,
+    "mean_sparsity_target": 0.5
+  },
+  "s=0.70": {
+    "acc_unobserved_learned": 0.8374715656042099,
+    "informative_frac_learned": 0.028323275316506625,
+    "acc_unobserved_random": 0.958234903216362,
+    "informative_frac_random": 0.09412918388843536,
+    "h_learned": 0.008505832031369209,
+    "h_random": 0.06577886454761028,
+    "delta_h": 0.05727303251624107,
+    "sparsity_err_learned": 0.009979089675471186,
+    "sparsity_err_random": 0.00019532442092895508,
+    "mean_sparsity_learned": 0.6934181213378906,
+    "mean_sparsity_target": 0.699999988079071
+  },
+  "_meta": {
+    "dataset": "mnist",
+    "checkpoint": "models_mask_gen_mnist/mask_gen_mnist_final.pth",
+    "entropy_region": "observed",
+    "sparsity_loss_weight": 10.0,
+    "batch_size": 512,
+    "epochs": 200,
+    "split": "test",
+    "eval_batches": 20,
+    "eval_batch_size": 128
+  }
+}

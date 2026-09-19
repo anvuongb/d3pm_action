@@ -16,6 +16,8 @@ models/
 models_mask_gen/
 models_mask_gen_mnist/
 models_mask_gen_cifar10/
+models_mask_gen_mnist_allH/
+models_mask_gen_cifar10_allH/
 models_mask_gen_fastmri/
 models_mask_gen_fastmri_nested/
 models_mask_gen_fastmri_infonce/
