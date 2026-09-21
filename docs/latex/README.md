@@ -1,6 +1,6 @@
-# AAAI LaTeX Paper (ITW / D3PM)
+# ICLR LaTeX Paper (ITW / D3PM)
 
-AAAI-26 format paper (named authors) converted from [`../paper.md`](../paper.md). Title: *Active Data Acquisition with Side Information via Discrete Diffusion Priors*.
+ICLR 2027 format paper (double-blind; authors hidden unless `\iclrfinalcopy` is set) converted from [`../paper.md`](../paper.md). Title: *Active Data Acquisition with Side Information via Discrete Diffusion Priors*.
 
 ## Prerequisites
 
@@ -27,23 +27,20 @@ make clean   # remove auxiliary files and PDFs
 |------|------|
 | `main.tex` | Full paper source |
 | `references.bib` | Bibliography |
-| `aaai2026.sty` | AAAI-26 style (vendored) |
-| `aaai2026.bst` | AAAI-26 BibTeX style (vendored) |
+| `iclr2027_conference.sty` | ICLR 2027 style (vendored) |
+| `iclr2027_conference.bst` | ICLR 2027 BibTeX style (vendored) |
+| `natbib.sty`, `fancyhdr.sty` | Required by the ICLR style (vendored) |
+| `aaai2026.sty`, `aaai2026.bst` | Unused; kept from the earlier AAAI draft |
 | `figures/pipeline.tex` | TikZ training pipeline diagram |
 
 ## Style file provenance
 
-`aaai2026.sty` and `aaai2026.bst` are from the **AAAI-26 Author Kit** (TemplateVersion 2026.1). Official download:
+`iclr2027_conference.sty`, `iclr2027_conference.bst`, `natbib.sty` and `fancyhdr.sty` come from the **ICLR 2027 style files** distributed by the conference. Limits: **9 pages** of main text for the initial submission (10 for rebuttal/camera-ready), unlimited pages for citations, appendix after the references. The AI use statement is **required** and does not count toward the limit.
 
-- [AAAI-26 Submission Instructions](https://aaai.org/conference/aaai/aaai-26/submission-instructions/) (Author Kit link)
+## Anonymity
 
-Vendored copies match the public AAAI 2026 template distribution. If formatting requirements change, replace these files from the latest official kit.
-
-## Authorship
-
-The paper uses named authors (Oregon State University and East Tennessee State University) with `\usepackage{aaai2026}` (no `submission` option). For anonymous review, add the `submission` option and replace `\author{}` / `\affiliations{}` with the anonymous placeholder per the Author Kit.
+Submissions must be anonymous: leave `\iclrfinalcopy` commented out and the style prints "Anonymous authors / Paper under double-blind review". The real author block in `main.tex` is only used once `\iclrfinalcopy` is uncommented for camera-ready.
 
 ## Notes
 
-- Do **not** add `\bibliographystyle{aaai2026}`; `aaai2026.sty` sets it automatically.
-- Avoid forbidden packages (`hyperref`, `geometry`, etc.) per AAAI guidelines.
+- Avoid `geometry`; the style sets the page dimensions.

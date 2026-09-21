@@ -12,7 +12,7 @@ figures/pipeline.pdf: figures/pipeline.tex
 	cd figures && $(LATEX) -interaction=nonstopmode pipeline.tex
 	cd figures && $(LATEX) -interaction=nonstopmode pipeline.tex
 
-$(MAIN).pdf: $(MAIN).tex references.bib aaai2026.sty aaai2026.bst figures/pipeline.pdf
+$(MAIN).pdf: $(MAIN).tex references.bib iclr2027_conference.sty iclr2027_conference.bst figures/pipeline.pdf
 	$(LATEX) -interaction=nonstopmode $(MAIN)
 	$(BIBTEX) $(MAIN)
 	$(LATEX) -interaction=nonstopmode $(MAIN)

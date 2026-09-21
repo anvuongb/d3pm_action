@@ -6,7 +6,7 @@ An Vuong, Anthony Q. Nguyen, Thuan Nguyen, Thinh Nguyen
 
 ## Abstract
 
-Acquiring data is costly, and which measurements to take under a budget matters as much as how many. We study budgeted acquisition with side information as an information-theoretic problem: choose a mask distribution $`p(x \mid z)`$, conditioned on side information $`z`$, that maximizes $`I(Y;C)`$ between a discrete target $`C`$ and its partial observation $`Y`$—equivalently, that minimizes $`H(C \mid Y)`$. When the observation model is unknown, a frozen discrete diffusion model (D3PM) supplies a differentiable surrogate for $`H(C \mid Y)`$, and a mask network is trained against it with Gumbel-Softmax relaxation and a sparsity–timestep calibration. We report what happens when this surrogate is checked against criteria it was not trained on. **The natural way to aggregate the surrogate—over the observed pixels only—is degenerate.** On MNIST it produces masks that observe background almost exclusively (under $`0.1\%`$ of digit pixels at $`s \le 0.5`$), whose observation is then identical to observing nothing, and that recover fewer digit pixels than a random mask ($`57\%`$ vs. $`77`$–$`92\%`$ at $`s \le 0.5`$); on CIFAR-10 the mask collapses to empty. Aggregating over the whole image removes this incentive: at $`s = 0.1`$ half of the corrected MNIST mask’s observed pixels are digit pixels (random: $`9\%`$), and it recovers $`90\%`$ of the digit against $`75\%`$ for a random mask. The advantage shrinks as the budget grows, and at $`s = 0.7`$ continued training erodes it: digit recovery falls from $`0.985`$ to $`0.952`$, below random’s $`0.958`$, while the surrogate keeps improving. On CIFAR-10 the corrected objective prevents the collapse but not the mismatch: at $`s = 0.1`$ the mask’s surrogate is half a random mask’s while its reconstruction is $`6.3`$ dB worse in PSNR. Even the corrected surrogate must be checked against a held-out criterion. We then stress-test the approach on Cartesian phase-encode selection for accelerated MRI, where masks can be scored by reconstruction error. There the entropy proxy disagrees with reconstruction quality, instance-adaptive conditioning is worth at most $`2\%`$, and a $`300`$-number energy average beats the learned policy. What works is optimizing the discrete mask directly against a reconstructor: a static mask found by greedy row swaps beats variable-density sampling by $`1.5`$–$`3.8\%`$ NMSE and the learned-sampling baseline LOUPE by $`15`$–$`33\%`$, under a held-out reconstructor. We release the `itw/` package with the evaluation protocol and controls.
+Acquiring data is costly, and which measurements to take under a budget matters as much as how many. We study budgeted acquisition with side information as an information-theoretic problem: choose a mask distribution $`p(x \mid z)`$, conditioned on side information $`z`$, that maximizes $`I(Y;C)`$ between a discrete target $`C`$ and its partial observation $`Y`$—equivalently, that minimizes $`H(C \mid Y)`$. When the observation model is unknown, a frozen discrete diffusion model (D3PM) supplies a differentiable surrogate for $`H(C \mid Y)`$, and a mask network is trained against it with Gumbel-Softmax relaxation and a sparsity–timestep calibration. We then check that surrogate against criteria it never saw. **The natural way to aggregate it—over the observed pixels only—is degenerate.** On binary MNIST it produces masks that observe background almost exclusively (under $`0.1\%`$ of digit pixels at $`s \le 0.5`$)—an observation identical to observing nothing—and that recover fewer digit pixels than a random mask; on CIFAR-10 the mask collapses to empty. Aggregating over the whole image removes the incentive: at $`s = 0.1`$ half of the corrected MNIST mask’s observed pixels are digit pixels (random: $`9\%`$), and it recovers $`90\%`$ of the digit against $`75\%`$ for a random mask. That advantage shrinks as the budget grows, and at $`s = 0.7`$ continued training erodes it below random while the surrogate keeps improving. On CIFAR-10 the correction prevents the collapse but not the mismatch: at $`s = 0.1`$ the mask’s surrogate is half a random mask’s while its reconstruction is $`6.3`$ dB worse in PSNR. Even the corrected surrogate needs a held-out criterion. We then stress-test the approach on Cartesian phase-encode selection for accelerated MRI, where masks can be scored by reconstruction error. There the entropy surrogate disagrees with reconstruction quality, instance-adaptive conditioning is worth at most $`2\%`$, and a 300-number energy average beats the learned policy. What works is optimizing the discrete mask directly against a reconstructor: a static mask found by greedy row swaps beats variable-density sampling by $`1.5`$–$`3.8\%`$ NMSE and the learned-sampling baseline LOUPE by $`15`$–$`33\%`$, under a held-out reconstructor. We release the `itw/` package with the evaluation protocol and controls.
 
 **Keywords:** Mutual information; active sensing; discrete diffusion; side information; accelerated MRI.
 
@@ -16,25 +16,25 @@ Measuring everything is expensive: higher fidelity costs power, bandwidth, stora
 
 We take an **information-theoretic** view. Rather than tailoring acquisition to one downstream model, we score measurements by their mutual information with the target, a model-agnostic quantity (Cover and Thomas 2006). A sensing action $`X`$ (a binary mask) is chosen from **side information** $`Z`$—a class label, a coarse summary of the scene, and a budget—to produce a measurement $`Y`$ with maximal information about the target $`C`$ (Figure 1). Prior work (Vuong et al. 2025) learned such masks on continuous images by pairing a U-Net mask generator (Ronneberger et al. 2015) with MINE (Belghazi et al. 2018). Here the target is **discrete**, and a **frozen absorbing-state D3PM** (Austin et al. 2021) supplies a surrogate for $`H(C \mid Y)`$.
 
-A surrogate that decreases under its own optimization has not thereby been shown to select good measurements. The central thread of this paper is to check the surrogate against criteria it never saw, in two settings: on images, against the prior’s own accuracy on the pixels left hidden; and on accelerated MRI, against reconstruction error scored by a reconstructor that took no part in selecting the mask.
+A surrogate that decreases under its own optimization has not thereby been shown to select good measurements. The thread running through this paper is to check it against criteria it never saw: on images, the prior’s own accuracy on the pixels left hidden; on accelerated MRI, reconstruction error scored by a reconstructor that took no part in selecting the mask.
 
 ### Contributions
 
 - We cast budgeted acquisition with side information as **Problem P4**—maximize $`I(Y;C)`$ under sparsity constraints—and implement it for discrete images with a frozen-D3PM surrogate for $`H(C \mid Y)`$, Gumbel-Softmax masks, and an empirical **sparsity–timestep calibration**.
 
-- We show that aggregating the surrogate over **observed pixels only is degenerate**: it rewards observing whatever is easiest to predict. On binary MNIST the resulting masks observe almost only background, which the absorbing-state encoding makes indistinguishable from observing nothing, and they are *worse* than random on every criterion except the proxy itself. Aggregating over the whole image removes the incentive, and we report what the corrected objective achieves. We also identify a residual loophole: the diffusion timestep is set from the *target* density, so the surrogate still rewards an empty mask unless the budget is enforced.
+- We show that aggregating the surrogate over **observed pixels only is degenerate**: it rewards observing whatever is easiest to predict. On binary MNIST the resulting masks observe almost only background, which the absorbing-state encoding makes indistinguishable from observing nothing, and they are *worse* than random on every criterion except the surrogate itself. Aggregating over the whole image removes the incentive; we report what the corrected objective achieves, and a residual loophole: the diffusion timestep is set from the *target* density, so the surrogate still rewards an empty mask unless the budget is enforced.
 
-- We **stress-test the approach on accelerated MRI** and report three negative results: the entropy proxy disagrees with reconstruction quality; instance-adaptive conditioning does not pay; and a 300-number energy average beats the learned policy.
+- We **stress-test the approach on accelerated MRI** and report three negative results: the entropy surrogate disagrees with reconstruction quality; instance-adaptive conditioning does not pay; and a 300-number energy average beats the learned policy.
 
 - We show that **mask ranking is reconstructor-dependent**, which explains the MRI failure, and that optimizing the discrete mask directly against a reconstructor beats variable density and LOUPE (Bahadir et al. 2020).
 
-- We contribute **controls** this literature rarely applies—proxy-free image metrics, a held-out split, a scout-derangement test for whether conditioning is used, and a held-out *judge* reconstructor—and document two metric defects that each inverted conclusions we had drawn.
+- We contribute **controls** this literature rarely applies—surrogate-free image metrics, a held-out split, a scout-derangement test for whether conditioning is used, and a held-out *judge* reconstructor—and document two metric defects that each inverted conclusions we had drawn.
 
 ## Related Work
 
 ##### Active learning and sensing.
 
-Active learning selects samples to label for a particular model (Guo and Greiner 2007); Shayovitz and Feder (2023) minimize conditional information in a universal framework. Model-driven (Kay 1998) and data-driven (Han et al. 2021) detection optimize for a task. We instead score *spatial acquisition masks* by mutual information under explicit budgets.
+Active learning selects samples to label for a particular model (Guo and Greiner 2007); Shayovitz and Feder (2023) minimize conditional information in a universal framework. Model-driven (Kay 1998) and data-driven (Han et al. 2021) detection likewise optimize for a fixed task. We instead score *spatial acquisition masks* by mutual information under explicit budgets.
 
 ##### Prior acquisition work.
 
@@ -42,7 +42,7 @@ Vuong et al. (2025) formulate Problems P1–P4 for acquisition with side informa
 
 ##### Discrete and continuous diffusion.
 
-D3PMs (Austin et al. 2021) extend denoising diffusion to categorical data; the absorbing-state kernel matches masked prediction. We use an absorbing D3PM with a cosine schedule (Ryu 2024), with a DiT backbone (Peebles and Xie 2023) on CIFAR-10. DDPMs (Ho et al. 2020) underpin continuous generative modeling, and recent work relates masked-diffusion objectives to information quantities (Nie et al. 2025); our surrogate is simpler, a sum of per-pixel entropies of a frozen $`c_0`$-predictor.
+D3PMs (Austin et al. 2021) extend denoising diffusion to categorical data; the absorbing-state kernel matches masked prediction. We use an absorbing D3PM with a cosine schedule (Ryu 2024), and a DiT backbone (Peebles and Xie 2023) on CIFAR-10. DDPMs (Ho et al. 2020) underpin continuous generative modeling, and recent work relates masked-diffusion objectives to information quantities (Nie et al. 2025); our surrogate is simpler, a sum of per-pixel entropies of a frozen $`c_0`$-predictor.
 
 ##### Differentiable discrete masks.
 
@@ -67,7 +67,7 @@ Notation.
 
 </div>
 
-Images are discretized to $`N`$ bins per channel, $`C \in \{0,\ldots,N-1\}^{C_{\mathrm{ch}} \times H \times W}`$. A mask $`X \in \{0,1\}^{1 \times H \times W}`$ selects observed pixels, $`Y = f(C, X)`$, where $`f`$ sets unobserved locations to the D3PM’s absorbing token $`0`$. For binary MNIST ($`N{=}2`$), $`f(C,X) = X \odot C`$: an observed background pixel and an unobserved pixel are *both* $`0`$. For CIFAR-10 ($`N{=}8`$), observed bins are shifted to $`\{1,\ldots,N{-}1\}`$ so that $`0`$ marks unobserved pixels; the CIFAR D3PM was trained on unshifted bins, so this shift is an inference-time approximation. Side information $`Z`$ is an $`8 \times 8`$ grayscale summary of $`C`$, the class label (MNIST), and a budget $`s`$ drawn per sample from $`\mathcal{U}(s_{\min}, s_{\max})`$.
+Images are discretized to $`N`$ bins per channel, so $`C \in \{0,\ldots,N-1\}^{C_{\mathrm{ch}} \times H \times W}`$ over $`C_{\mathrm{ch}}`$ channels. A mask $`X \in \{0,1\}^{1 \times H \times W}`$ selects observed pixels and $`Y = f(C, X)`$ sets unobserved locations to the D3PM’s absorbing token $`0`$. For binary MNIST ($`N{=}2`$), $`f(C,X) = X \odot C`$, so an observed background pixel and an unobserved pixel are *both* $`0`$. For CIFAR-10 ($`N{=}8`$), observed bins are shifted to $`\{1,\ldots,N{-}1\}`$ so that $`0`$ marks unobserved pixels; the CIFAR D3PM was trained on unshifted bins, so this shift is an inference-time approximation. Side information $`Z`$ is an $`8 \times 8`$ grayscale summary of $`C`$, the class label (MNIST), and a budget $`s`$ drawn per sample from $`\mathcal{U}(s_{\min}, s_{\max})`$.
 
 ##### Problem P4.
 
@@ -89,7 +89,7 @@ A frozen absorbing-state D3PM with denoiser $`p_\theta(c_0 \mid c_t, t, c_{\math
 H_i = -\sum_{k=0}^{N-1} p_i(k) \log p_i(k), \qquad p_i = \mathrm{softmax}(\hat{z}_i).
 \end{equation}
 ```
-Summing $`H_i`$ over pixels upper-bounds the joint conditional entropy under the model, and is the surrogate. The choice that matters is *which pixels to average over*.
+Summing $`H_i`$ over pixels upper-bounds the joint conditional entropy under the model. We use a normalized sum; the choice that matters is *which* pixels the normalization runs over.
 
 ##### Observed-pixel aggregation is degenerate.
 
@@ -99,7 +99,7 @@ Averaging over the observed pixels only,
 \mathcal{H}_{\mathrm{obs}} = \frac{\sum_i X_i H_i}{\sum_i X_i},
 \end{equation}
 ```
-was our original design, motivated by keeping gradients away from absorbed regions. It does not measure $`H(C \mid Y)`$: it measures how predictable the *observed* pixels are, and is minimized by observing whatever is easiest to predict. On binary MNIST that is background, whose observation adds nothing to $`Y`$. With a weak budget penalty the minimizer is a nearly empty mask. Section shows both failures.
+was our original design, motivated by keeping gradients away from absorbed regions. It does not measure $`H(C \mid Y)`$: it measures how predictable the *observed* pixels are, and is minimized by observing whatever is easiest to predict. On binary MNIST that is background, whose observation adds nothing to $`Y`$, and with a weak budget penalty the minimizer is a nearly empty mask. Section shows both failures.
 
 ##### Whole-image aggregation.
 
@@ -121,7 +121,7 @@ A mask keeping fraction $`s`$ of pixels resembles forward corruption in which a 
 
 ### Mask generator and objective
 
-The mask generator concatenates the $`8 \times 8`$ summary in $`Z`$ with Fourier features of $`s`$ (and a class embedding on MNIST) and decodes per-pixel keep/drop logits with a convolutional encoder–decoder. Binary masks are drawn with Gumbel-Softmax, straight-through, with temperature annealed from $`1.0`$ to $`0.5`$. The loss is
+The mask generator concatenates the $`8 \times 8`$ summary in $`Z`$ with Fourier features of $`s`$ (and a class embedding on MNIST) and decodes per-pixel keep/drop logits with a convolutional encoder–decoder. Binary masks are drawn with straight-through Gumbel-Softmax, temperature annealed from $`1.0`$ to $`0.5`$. The loss is
 ``` math
 \begin{equation}
 \mathcal{L} = \mathcal{H}_{\mathrm{all}} + \lambda\,\mathbb{E}\bigl[(\bar{X} - s)^2\bigr],
@@ -157,11 +157,11 @@ Mask-generator training. The original CIFAR-10 run used $`\lambda = 1`$ and batc
 
 ##### Evaluation.
 
-All image numbers are on the **held-out test split** ($`20`$ batches of $`128`$), at fixed budgets $`s \in \{0.1, 0.3, 0.5, 0.7\}`$, against budget-exact uniformly random masks. Besides the surrogate itself we report criteria the mask never optimized. We reconstruct each image with its observed pixels at their measured values and its hidden pixels at the D3PM’s argmax, and report **full-image accuracy** and **foreground recovery**, the fraction of nonzero (digit) pixels recovered correctly; on MNIST $`{\sim}90\%`$ of pixels are background, so full-image accuracy is $`{\sim}0.90`$ for an all-black guess, and foreground recovery is the informative one. For CIFAR-10 we also report PSNR, with hidden pixels at the D3PM’s posterior mean on a $`[0,1]`$ scale. We also report the **informative fraction**, the share of observed pixels whose value in $`Y`$ differs from the absorbing token. Accuracy on *hidden* pixels alone would be biased across masks: a mask that observes more of the digit leaves fewer, harder digit pixels hidden.
+All image numbers are on the **held-out test split** ($`20`$ batches of $`128`$), at fixed budgets $`s \in \{0.1, 0.3, 0.5, 0.7\}`$, against budget-exact uniformly random masks. Besides the surrogate itself we report criteria the mask never optimized. We reconstruct each image with its observed pixels at their measured values and its hidden pixels at the D3PM’s argmax, and score it by **full-image accuracy** and by **foreground recovery**, the fraction of nonzero (digit) pixels recovered correctly; since $`{\sim}90\%`$ of MNIST pixels are background, an all-black guess already reaches $`{\sim}0.90`$ full-image accuracy, so foreground recovery is the informative one. On CIFAR-10 we add PSNR, with hidden pixels at the D3PM’s posterior mean on a $`[0,1]`$ scale. Finally, the **informative fraction** is the share of observed pixels whose value in $`Y`$ differs from the absorbing token. We do not score *hidden* pixels alone, which would be biased across masks: a mask that observes more of the digit leaves fewer, harder digit pixels hidden.
 
 ### The observed-pixel objective fails
 
-Table 3 evaluates the MNIST mask trained with $`\mathcal{H}_{\mathrm{obs}}`$. By its own training criterion it wins overwhelmingly: $`\mathcal{H}_{\mathrm{obs}}`$ is two orders of magnitude below random. Every other criterion reverses the verdict. **No observed pixel is informative** at $`s \le 0.5`$: the mask observes background almost exclusively (under $`0.1\%`$ of digit pixels at $`s \le 0.5`$, and $`21\%`$ at $`s = 0.7`$ against $`70\%`$ for a random mask), so $`Y`$ is all-zero—identical to observing nothing. At $`s \le 0.5`$ it recovers $`57\%`$ of digit pixels against $`77`$–$`92\%`$ for a random mask, and the whole-image surrogate is higher than random. The training curve—$`\mathcal{H}_{\mathrm{obs}}`$ falling from $`0.029`$ to $`0.005`$ over 200 epochs while the budget holds—looks like success throughout.
+Table 3 evaluates the MNIST mask trained with $`\mathcal{H}_{\mathrm{obs}}`$. By its own training criterion it wins overwhelmingly: $`\mathcal{H}_{\mathrm{obs}}`$ is two orders of magnitude below random. Every other criterion reverses the verdict. **No observed pixel is informative** at $`s \le 0.5`$: the mask observes background almost exclusively—under $`0.1\%`$ of digit pixels there, and $`21\%`$ at $`s = 0.7`$ against $`70\%`$ for a random mask—so $`Y`$ is all-zero, identical to observing nothing. At $`s \le 0.5`$ it recovers $`57\%`$ of digit pixels against $`77`$–$`92\%`$ for a random mask, and its whole-image surrogate is higher than random’s. The training curve—$`\mathcal{H}_{\mathrm{obs}}`$ falling from $`0.029`$ to $`0.005`$ over 200 epochs while the budget holds—looks like success throughout.
 
 <div id="tab:mnist-old">
 
@@ -176,11 +176,13 @@ MNIST mask trained with the observed-pixel objective, learned / random, held-out
 
 </div>
 
-On CIFAR-10 with $`\lambda = 1`$ the same objective drives the mask toward empty: the budget penalty rises from $`0.05`$ to $`0.24`$ during training while $`\mathcal{H}_{\mathrm{obs}}`$ falls, and at epoch 149 the mask’s achieved density is at most $`1.2 \times 10^{-5}`$ at every budget, against targets of $`0.1`$–$`0.7`$. Its hidden-pixel accuracy is $`0.036`$, and $`0.00`$ on hidden non-black pixels, against $`0.14`$–$`0.17`$ and $`0.14`$–$`0.16`$ for random masks: the D3PM reads the empty observation as a black image.
+On CIFAR-10 with $`\lambda = 1`$ the same objective drives the mask toward empty: the budget penalty rises from $`0.05`$ to $`0.24`$ during training while $`\mathcal{H}_{\mathrm{obs}}`$ falls, and at epoch 149 the mask’s achieved density is at most $`1.2 \times 10^{-5}`$ at every budget, against targets of $`0.1`$–$`0.7`$. Its hidden-pixel accuracy is $`0.036`$ ($`0.00`$ on hidden non-black pixels), against $`0.14`$–$`0.17`$ ($`0.14`$–$`0.16`$) for random masks: the D3PM reads the empty observation as a black image.
 
 ### The whole-image objective
 
-Table 4 retrains the MNIST mask with $`\mathcal{H}_{\mathrm{all}}`$, all else equal. The surrogate’s win now transfers. Full-image accuracy beats random at every budget, and foreground recovery beats it by a wide margin at low budgets ($`0.90`$ vs. $`0.75`$ at $`s = 0.1`$), where choosing pixels matters most; the gap closes as the budget grows, and at $`s = 0.7`$ random is marginally ahead ($`0.96`$ vs. $`0.95`$). The high-budget gap is a late-training effect: across checkpoints, foreground recovery at $`s = 0.1`$ is flat ($`0.89`$–$`0.91`$ from epoch 49 on), but at $`s = 0.7`$ it falls from $`0.985`$ at epoch 49 to $`0.952`$ at epoch 200 while $`\mathcal{H}_{\mathrm{all}}`$ keeps improving, so the surrogate and the recovery criterion diverge once the budget is loose. Half of the observed pixels at $`s = 0.1`$ are digit pixels, against $`9\%`$ for a random mask. The learned masks’ achieved density overshoots the budget slightly ($`0.105`$ at $`s = 0.1`$, $`0.305`$ at $`0.3`$, within $`0.005`$ above), whereas the random masks are exact; this favours the learned masks by at most a few percent of the budget, far less than the recovery gap at low $`s`$.
+We retrain the MNIST mask with $`\mathcal{H}_{\mathrm{all}}`$, all else equal (Table 4). The surrogate’s win now transfers. Full-image accuracy beats random at every budget, and foreground recovery beats it by a wide margin at low budgets ($`0.90`$ vs. $`0.75`$ at $`s = 0.1`$), where choosing pixels matters most; the gap closes as the budget grows, and at $`s = 0.7`$ random is marginally ahead ($`0.96`$ vs. $`0.95`$). Half of the observed pixels at $`s = 0.1`$ are digit pixels, against $`9\%`$ for a random mask.
+
+The reversal at $`s = 0.7`$ is a late-training effect: across checkpoints, foreground recovery at $`s = 0.1`$ is flat ($`0.89`$–$`0.91`$ from epoch 49 on), but at $`s = 0.7`$ it falls from $`0.985`$ at epoch 49 to $`0.952`$ at epoch 200 while $`\mathcal{H}_{\mathrm{all}}`$ keeps improving, so the surrogate and the recovery criterion diverge once the budget is loose. One caveat on the comparison: the learned masks overshoot the budget slightly ($`0.105`$ at $`s = 0.1`$, $`0.305`$ at $`0.3`$, within $`0.005`$ above) where the random masks are exact, which favors the learned masks by at most a few percent of the budget—far less than the recovery gap at low $`s`$.
 
 <div id="tab:mnist-new">
 
@@ -195,7 +197,7 @@ MNIST mask trained with the whole-image objective, learned / random, held-out te
 
 </div>
 
-Table 5 retrains the CIFAR-10 mask with $`\mathcal{H}_{\mathrm{all}}`$ and $`\lambda = 10`$. The collapse is gone: achieved density is within $`0.006`$ of the budget at every $`s`$. The surrogate’s win, however, does not transfer. At $`s = 0.1`$ the mask lowers $`\mathcal{H}_{\mathrm{all}}`$ to $`0.46`$ against $`0.91`$ for a random mask, yet its reconstruction is far worse: $`8.6`$ against $`14.8`$ dB PSNR, and $`17\%`$ of non-black pixels recovered against $`23\%`$. At $`s = 0.3`$ it loses on every criterion, the surrogate included, and at $`s \ge 0.5`$ it is indistinguishable from random. The divergence grows with training: from epoch 40 to epoch 200, $`\mathcal{H}_{\mathrm{all}}`$ at $`s = 0.1`$ falls from $`0.72`$ to $`0.46`$ while PSNR falls from $`10.4`$ to $`8.6`$ dB. On natural images, lowering the D3PM’s predictive entropy selects observations that make the prior confident, not observations that make it correct.
+We retrain the CIFAR-10 mask with $`\mathcal{H}_{\mathrm{all}}`$ and $`\lambda = 10`$ (Table 5). The collapse is gone: achieved density is within $`0.006`$ of the budget at every $`s`$. The surrogate’s win, however, does not transfer. At $`s = 0.1`$ the mask lowers $`\mathcal{H}_{\mathrm{all}}`$ to $`0.46`$ against $`0.91`$ for a random mask, yet its reconstruction is far worse: $`8.6`$ against $`14.8`$ dB PSNR, and $`17\%`$ of non-black pixels recovered against $`23\%`$. At $`s = 0.3`$ it loses on every criterion, the surrogate included, and at $`s \ge 0.5`$ it is indistinguishable from random. The divergence grows with training: from epoch 40 to epoch 200, $`\mathcal{H}_{\mathrm{all}}`$ at $`s = 0.1`$ falls from $`0.72`$ to $`0.46`$ while PSNR falls from $`10.4`$ to $`8.6`$ dB. On natural images, lowering the D3PM’s predictive entropy selects observations that make the prior confident, not ones that make it correct.
 
 <div id="tab:cifar-new">
 
@@ -212,7 +214,7 @@ CIFAR-10 mask trained with the whole-image objective, learned / random, held-out
 
 ## Accelerated MRI: a stress test
 
-On images the surrogate can at least be checked against the prior’s own predictions. Accelerated MRI offers a fully independent criterion: the action is a Cartesian phase-encode (PE) row mask under a line budget, and the mask can be scored by reconstruction error, which the policy never sees.
+On images the surrogate can at least be checked against the prior’s own predictions. Accelerated MRI offers a fully independent criterion: the action is a Cartesian phase-encode (PE) row mask under a line budget, and the mask is scored by reconstruction error, which the policy never sees.
 
 ### Setup
 
@@ -220,9 +222,9 @@ fastMRI single-coil knee (Zbontar et al. 2018), one mid-slice per volume: 973 tr
 
 Two U-Net reconstructors are trained on the training split under *heuristic* masks only—six random, equispaced and variable-density families, with and without the ACS block, $`s \sim \mathcal{U}(0.10, 0.75)`$—so neither ever sees a learned mask. **U-Net A** ($`1.9`$M parameters) is the one masks are optimized against. **U-Net B** ($`4.3`$M parameters, different seed and mask draws) is a held-out *judge*, used only for scoring. All reported numbers are U-Net B.
 
-### The proxy does not transfer
+### The surrogate does not transfer
 
-**The entropy proxy disagrees with reconstruction quality.** At $`s = 0.25`$ the learned policy attains the lowest coarse-proxy entropy of any method and still loses on NMSE to every heuristic tested.
+**The entropy surrogate disagrees with reconstruction quality.** At $`s = 0.25`$ the learned policy attains the lowest coarse entropy of any method and still loses on NMSE to every heuristic tested.
 
 **A 300-number average beats the learned policy.** Mean per-row k-space energy, fit on the training split, beats the learned policy at every budget under zero-filled reconstruction ($`+5.1\%`$, $`+0.5\%`$, $`+2.9\%`$, $`+3.6\%`$ at $`s = 0.25, 0.40, 0.50, 0.75`$). The policy approximates this profile: its row-selection frequency correlates $`r = 0.93`$ with the variable-density prior and $`0.83`$ with log row energy.
 
@@ -230,7 +232,7 @@ Two U-Net reconstructors are trained on the training split under *heuristic* mas
 
 ### Mask ranking is reconstructor-dependent
 
-Table 6 explains the failure. Masks that **spread out** gain most from a reconstructor; **center-concentrated** masks gain least, because a reconstructor with a prior already predicts the low-frequency center. The energy oracle—best of all under zero-filled reconstruction—is the worst once a prior exists. The learned policy was trained on zero-filled error and a coarse-entropy term, **both of which reward energy capture**: exactly the signal a good reconstructor makes redundant.
+Table 6 explains the failure. Masks that **spread out** gain most from a reconstructor; **center-concentrated** masks gain least, because a reconstructor with a prior already predicts the low-frequency center. The energy oracle—the best mask of all under zero-filled reconstruction—gains the least once a prior exists. The learned policy was trained on zero-filled error and a coarse-entropy term, **both of which reward energy capture**: exactly the signal a good reconstructor makes redundant.
 
 <div id="tab:recon-gain">
 
@@ -250,7 +252,7 @@ Val NMSE at $`s = 0.25`$. Center-concentrated masks gain least from a reconstruc
 
 ### What does work
 
-Optimizing the discrete mask directly against the reconstructor. A relaxed optimizer—a straight-through top-$`k`$ over a 300-parameter row profile—loses to variable density at every budget. A greedy row-swap search on the *hard* mask, in which the gradient proposes candidate swaps and exact evaluation on the training split accepts them, wins (Table 7). Every run stopped at a local optimum after $`0`$–$`8`$ accepted swaps; about half the gain comes from starting at the best fixed variable-density draw rather than redrawing per slice, and half from the swaps.
+Optimizing the discrete mask directly against the reconstructor does. A relaxed optimizer—a straight-through top-$`k`$ over a 300-parameter row profile—loses to variable density at every budget. A greedy row-swap search on the *hard* mask, in which the gradient proposes candidate swaps and exact evaluation on the training split accepts them, wins (Table 7). Every run stopped at a local optimum after $`0`$–$`8`$ accepted swaps; about half the gain comes from starting at the best fixed variable-density draw rather than redrawing per slice, and half from the swaps.
 
 <div id="tab:mri-main">
 
@@ -265,30 +267,30 @@ Held-out val NMSE under the judge U-Net B. ACS + VD: ACS block plus variable-den
 
 </div>
 
-The static mask is the best tested on NMSE and PSNR at every budget, and also beats variable density under plain zero-filled reconstruction at three of four budgets, so it is not exploiting one reconstructor’s quirks. SSIM agrees against variable density at $`s \le 0.50`$, but center-concentrated masks score up to $`0.7`$ SSIM points ($`\times 100`$) higher at $`s \ge 0.40`$.
+The static mask is the best of those tested on NMSE and PSNR at every budget, and it also beats variable density under plain zero-filled reconstruction at three of four budgets, so it is not exploiting one reconstructor’s quirks. SSIM agrees against variable density at $`s \le 0.50`$, but center-concentrated masks score up to $`0.7`$ SSIM points ($`\times 100`$) higher at $`s \ge 0.40`$.
 
 ##### LOUPE.
 
-We ported LOUPE (Bahadir et al. 2020) to PyTorch, validated its mask layers against the original implementation to $`3 \times 10^{-7}`$, restricted it to whole PE rows, and trained it on the same split until the selected row set stopped changing ($`7.9`$k–$`13.5`$k steps). Its mask is $`14.6`$–$`33.1\%`$ worse than ours under the judge and worse than every heuristic at $`s \ge 0.40`$, although it trains its reconstructor jointly with the mask. LOUPE’s forward model Fourier-transforms a real magnitude image, so its k-space is Hermitian, and its masks follow that assumption: at $`s = 0.25`$–$`0.50`$ they contain only $`7`$ mirrored $`\pm f`$ row pairs (ours: $`19`$–$`57`$), and at $`s = 0.75`$ they sample one full half of k-space. On true complex k-space the halves are not redundant, the most plausible cause of the gap. We read this as a limitation of LOUPE’s forward model for complex data, not of relaxation as such.
+We ported LOUPE (Bahadir et al. 2020) to PyTorch, validated its mask layers against the original implementation to $`3 \times 10^{-7}`$, restricted it to whole PE rows, and trained it on the same split until the selected row set stopped changing ($`7.9`$k–$`13.5`$k steps). Its mask is $`14.6`$–$`33.1\%`$ worse than ours under the judge, and worse than every heuristic at $`s \ge 0.40`$, even though it trains its reconstructor jointly with the mask. LOUPE’s forward model Fourier-transforms a real magnitude image, so its k-space is Hermitian, and its masks follow that assumption: at $`s = 0.25`$–$`0.50`$ they contain only $`7`$ mirrored $`\pm f`$ row pairs (ours: $`19`$–$`57`$), and at $`s = 0.75`$ they sample one full half of k-space. On true complex k-space the halves are not redundant, which is the most plausible cause of the gap. We read this as a limitation of LOUPE’s forward model for complex data, not of relaxation as such.
 
 ### Controls worth adopting
 
 **The judge matters.** Scored against the reconstructor it was optimized against, the relaxed profile reads $`-0.49\%`$ versus variable density at $`s = 0.40`$; against the judge, $`-1.97\%`$. A full $`1.5`$ percentage points of apparent quality was overfitting to one reconstructor.
 
-**Metric defects inverted our conclusions twice.** Our NMSE clamped its denominator at $`10^{-8}`$; fastMRI magnitudes are $`{\sim}10^{-6}`$, so the floor was active on $`67\%`$ of validation slices and NMSE read $`{\sim}4\times`$ low on exactly the low-energy images. Correcting it reversed the sign of our scout-derangement result and removed a claimed win for the policy’s static mask. The observed-pixel surrogate of Section is the second instance: a proxy that improves under its own optimization while the quantity it stands for worsens. Neither defect is visible to a test that only checks relative ordering within one metric.
+**Metric defects inverted our conclusions twice.** Our NMSE clamped its denominator at $`10^{-8}`$; fastMRI magnitudes are $`{\sim}10^{-6}`$, so the floor was active on $`67\%`$ of validation slices and NMSE read $`{\sim}4\times`$ low on exactly the low-energy images. Correcting it reversed the sign of our scout-derangement result and removed a claimed win for the policy’s static mask. The observed-pixel aggregation of Section is the second: a surrogate that improves under its own optimization while the quantity it stands for worsens. Neither defect is visible to a test that only checks relative ordering within one metric.
 
 ## Discussion and Limitations
 
-**Checking a surrogate requires a second criterion.** Both image-domain failures, and the MRI failure, were invisible in training curves; each was exposed only by a criterion the mask never optimized. We regard the evaluation protocol as the more durable contribution.
+**Checking a surrogate requires a second criterion.** Both image-domain failures, and the MRI failure, were invisible in the training curves; each was exposed only by a criterion the mask never optimized. We regard the evaluation protocol as the more durable contribution.
 
 **The surrogate is not $`H(C \mid Y)`$.** It is the entropy of a frozen $`c_0`$-predictor applied at a timestep matched to the budget. The D3PM was trained on i.i.d. forward corruption, not on structured masks; timestep matching is heuristic; and on MNIST the absorbing token coincides with black, so observing black carries no information. A separate mask token would remove the last issue but requires retraining the prior.
 
-**The prior is not load-bearing in the MRI result.** The frozen D3PM contributes nothing to the winning MRI mask, which comes from combinatorial search against a reconstructor. The fine-resolution prior was flat in cross-entropy across timesteps and disabled ($`\beta = 0`$) in all MRI runs. A stronger prior, or a diffusion posterior sampler as the reconstructor, could change this; our results show the optimal mask moves when the reconstructor does.
+**The prior is not load-bearing in the MRI result.** The frozen D3PM contributes nothing to the winning MRI mask, which comes from combinatorial search against a reconstructor: the fine-resolution prior was flat in cross-entropy across timesteps and disabled ($`\beta = 0`$) in all MRI runs. A stronger prior, or a diffusion posterior sampler as the reconstructor, could change this; what our results show is that the optimal mask moves when the reconstructor does.
 
 **Scale.** Single-coil, one mid-slice per volume, 973 training slices, reconstructors of $`1.9`$M/$`4.3`$M parameters. The combinatorial search reaches a local optimum, not a global one, and its best starting draw is selected on the training split.
 
 ## Conclusion
 
-We formulated budgeted acquisition with side information as maximizing $`I(Y;C)`$ and implemented it for discrete images with a frozen-D3PM surrogate for $`H(C \mid Y)`$. Checked against criteria it never optimized, the surrogate’s natural observed-pixel form proved degenerate: on MNIST it selects uninformative background and on CIFAR-10 an empty mask, while its training curve improves throughout. Scoring entropy over the whole image removes the incentive: the corrected MNIST mask concentrates on the digit and recovers it better than a random mask at low budgets, though the advantage fades, and late in training reverses, as the budget grows. On CIFAR-10 it prevents the collapse, but lower surrogate entropy comes with worse reconstructions than a random mask. On accelerated MRI, the entropy-trained policy loses to a 300-number energy average, because mask ranking depends on the reconstructor; a static mask optimized directly against a reconstructor beats variable density by $`1.5`$–$`3.8\%`$ and LOUPE by $`15`$–$`33\%`$ under a held-out judge.
+We formulated budgeted acquisition with side information as maximizing $`I(Y;C)`$ and implemented it for discrete images with a frozen-D3PM surrogate for $`H(C \mid Y)`$. Checked against criteria it never optimized, the surrogate’s natural observed-pixel form proved degenerate: on MNIST it selects uninformative background and on CIFAR-10 an empty mask, while its training curve improves throughout. Scoring entropy over the whole image removes that incentive. The corrected MNIST mask concentrates on the digit and recovers it better than a random mask at low budgets, though the advantage fades, and late in training reverses, as the budget grows; on CIFAR-10 the correction prevents the collapse, but lower surrogate entropy still comes with worse reconstructions than a random mask. On accelerated MRI, the entropy-trained policy loses to a 300-number energy average, because mask ranking depends on the reconstructor; a static mask optimized directly against a reconstructor beats variable density by $`1.5`$–$`3.8\%`$ and LOUPE by $`15`$–$`33\%`$ under a held-out judge.
 
-Two lessons seem more durable than the numbers. An acquisition objective must be trained against the estimator that will be used, because the best measurement set is a property of the pair, not of the signal alone. And a surrogate that decreases under its own optimization is not thereby validated. We release `itw/` with the held-out protocols, the proxy-free metrics, the derangement and judge controls, and the reconstructors, so that both the positive and the negative results can be checked.
+Two lessons outlast the numbers. An acquisition objective must be trained against the estimator that will be used, because the best measurement set is a property of the pair, not of the signal alone. And a surrogate that decreases under its own optimization is not thereby validated. We release `itw/` with the held-out protocols, the surrogate-free metrics, the derangement and judge controls, and the reconstructors, so that both the positive and the negative results can be checked.
