@@ -140,8 +140,10 @@ from replacing zero-filled with the judge:
 Masks that **spread out** gain most; **centre-concentrated** masks gain least.
 A reconstructor carrying a prior can already predict the low-frequency centre,
 so budget spent there is redundant. The energy oracle — optimal for raw energy
-capture, and the best mask of all under zero-filled at s=0.25 — is the *worst*
-performer once a prior exists.
+capture, and the best mask of all under zero-filled at s=0.25 — *gains the
+least* once a prior exists (14.1%, the lowest in the table), dropping to 5th of
+these 7 masks by judge NMSE. It is not the worst performer: both policy
+variants score worse under the judge.
 
 This is why the learned policy underperformed: it was trained on zero-filled
 NMSE plus a coarse-entropy term, both of which reward energy capture, which is
