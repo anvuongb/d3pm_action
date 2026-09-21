@@ -65,24 +65,7 @@ Variable-density random sampling with a fully sampled low-frequency block is the
 
 \section{Problem Formulation}
 
-\begin{table}[t]
-\centering
-\caption{Notation.}
-\label{tab:notation}
-\footnotesize
-\begin{tabular}{@{}p{0.28\columnwidth}p{0.62\columnwidth}@{}}
-\hline
-\textbf{Symbol} & \textbf{Description} \\
-\hline
-$C$, $p(c)$ & Target discrete image and its distribution \\
-$X$, $p(x \mid z)$ & Sensing action (binary mask) and policy \\
-$Y$, $p(y \mid x, c)$ & Measurement (partial observation) \\
-$Z$, $p(z \mid c)$ & Side information (label, coarse image, budget) \\
-\hline
-\end{tabular}
-\end{table}
-
-Images are discretized to $N$ bins per channel, so $C \in \{0,\ldots,N-1\}^{C_{\mathrm{ch}} \times H \times W}$ over $C_{\mathrm{ch}}$ channels. A mask $X \in \{0,1\}^{1 \times H \times W}$ selects observed pixels and $Y = f(C, X)$ sets unobserved locations to the D3PM's absorbing token $0$. For binary MNIST ($N{=}2$), $f(C,X) = X \odot C$, so an observed background pixel and an unobserved pixel are \emph{both} $0$. For CIFAR-10 ($N{=}8$), observed bins are shifted to $\{1,\ldots,N{-}1\}$ so that $0$ marks unobserved pixels. The shift saturates at $N{-}1$, so bins $6$ and $7$---the top two of the eight---collide, and the CIFAR D3PM was trained on unshifted bins: the observation we hand the prior is therefore both lossy at the bright end and off its training distribution. Every CIFAR number we report, learned and random alike, passes through this same encoding. Side information $Z$ is an $8 \times 8$ grayscale summary of $C$, the class label (MNIST), and a budget $s$ drawn per sample from $\mathcal{U}(s_{\min}, s_{\max})$.
+Table~\ref{tab:notation} in Appendix~\ref{app:notation} collects the notation. Images are discretized to $N$ bins per channel, so $C \in \{0,\ldots,N-1\}^{C_{\mathrm{ch}} \times H \times W}$ over $C_{\mathrm{ch}}$ channels. A mask $X \in \{0,1\}^{1 \times H \times W}$ selects observed pixels and $Y = f(C, X)$ sets unobserved locations to the D3PM's absorbing token $0$. For binary MNIST ($N{=}2$), $f(C,X) = X \odot C$, so an observed background pixel and an unobserved pixel are \emph{both} $0$. For CIFAR-10 ($N{=}8$), observed bins are shifted to $\{1,\ldots,N{-}1\}$ so that $0$ marks unobserved pixels. The shift saturates at $N{-}1$, so bins $6$ and $7$---the top two of the eight---collide, and the CIFAR D3PM was trained on unshifted bins: the observation we hand the prior is therefore both lossy at the bright end and off its training distribution. Every CIFAR number we report, learned and random alike, passes through this same encoding. Side information $Z$ is an $8 \times 8$ grayscale summary of $C$, the class label (MNIST), and a budget $s$ drawn per sample from $\mathcal{U}(s_{\min}, s_{\max})$.
 
 \paragraph{Problem P4.}
 \begin{equation}
@@ -168,6 +151,18 @@ $s$ & $\mathcal{H}_{\mathrm{obs}}$ & $\mathcal{H}_{\mathrm{all}}$ & Fg recovery 
 On CIFAR-10 with $\lambda = 1$ the same objective drives the mask toward empty: the budget penalty rises from $0.05$ to $0.24$ during training while $\mathcal{H}_{\mathrm{obs}}$ falls, and at epoch 149 the mask's achieved density is at most $1.2 \times 10^{-5}$ at every budget, against targets of $0.1$--$0.7$. Its hidden-pixel accuracy is $0.036$ ($0.00$ on hidden non-black pixels), against $0.14$--$0.17$ ($0.14$--$0.16$) for random masks: the D3PM reads the empty observation as a black image.
 
 \subsection{The whole-image objective}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/training_divergence.pdf}
+\caption{The surrogate and the criterion part company over training. Top: the
+whole-image surrogate the masks are trained on, which falls throughout. Bottom:
+a criterion no mask optimized, on the same checkpoints. MNIST digit recovery at
+$s = 0.7$ crosses below random between epochs 150 and 200; CIFAR-10 at
+$s = 0.1$ starts $4.5$~dB behind random and loses $1.8$~dB more while the
+surrogate improves by $36\%$.}
+\label{fig:divergence}
+\end{figure}
+
 We retrain the MNIST mask with $\mathcal{H}_{\mathrm{all}}$, all else equal (Table~\ref{tab:mnist-new}). The surrogate's win now transfers. Full-image accuracy beats random at every budget, and foreground recovery beats it by a wide margin at low budgets ($0.90$ vs.\ $0.75$ at $s = 0.1$), where choosing pixels matters most; the gap closes as the budget grows, and at $s = 0.7$ random is marginally ahead ($0.96$ vs.\ $0.95$). Half of the observed pixels at $s = 0.1$ are digit pixels, against $9\%$ for a random mask. One caveat on the comparison: the learned masks overshoot the budget slightly ($0.105$ at $s = 0.1$, $0.305$ at $0.3$, within $0.006$ above) where the random masks are exact, which favors the learned masks by at most a few percent of the budget---far less than the recovery gap at low $s$.
 
 \textbf{The win is narrower than foreground recovery makes it look.} Recovery credits an observed digit pixel as recovered, so it mixes measurement with inference. The last column of Table~\ref{tab:mnist-new} separates them, and reverses the verdict at $s \ge 0.3$: on the digit pixels it leaves \emph{hidden}, the learned mask makes the prior \emph{worse} than a random mask does ($0.777$ vs.\ $0.817$ at $s = 0.3$, $0.747$ vs.\ $0.861$ at $s = 0.7$). It wins on both criteria only at $s = 0.1$ ($0.764$ vs.\ $0.727$). This is the mask-dependent bias of a hidden-only score working against the learned mask: it observes about $57\%$ of the digit at $s = 0.1$ and $75$--$81\%$ at $s \ge 0.3$, against $10\%$ and $30$--$70\%$ for a random mask, and what it leaves hidden is what the prior finds hardest. The $14.4$-point recovery gap at $s = 0.1$ decomposes accordingly: about $57$ points are digit pixels observed outright and credited for free, and only $3.7$ points come from better prediction of what stays hidden.
@@ -335,6 +330,62 @@ image-domain table are released as JSON.
 \bibliography{references}
 
 \appendix
+
+\section{Notation}
+\label{app:notation}
+
+\begin{table}[t]
+\centering
+\caption{Notation.}
+\label{tab:notation}
+\footnotesize
+\begin{tabular}{@{}p{0.28\columnwidth}p{0.62\columnwidth}@{}}
+\hline
+\textbf{Symbol} & \textbf{Description} \\
+\hline
+$C$, $p(c)$ & Target discrete image and its distribution \\
+$X$, $p(x \mid z)$ & Sensing action (binary mask) and policy \\
+$Y$, $p(y \mid x, c)$ & Measurement (partial observation) \\
+$Z$, $p(z \mid c)$ & Side information (label, coarse image, budget) \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\section{Additional figures}
+\label{app:figures}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/metrics_vs_budget.pdf}
+\caption{Final checkpoints against the budget, on criteria the masks never
+optimized. The MNIST advantage in digit recovery (left) shrinks to a tie by
+$s = 0.7$; accuracy on the digit pixels the mask leaves hidden (centre) is
+worse than random for every $s \ge 0.3$; CIFAR-10 reconstruction (right) is
+$6.3$~dB behind random at $s = 0.1$ and level by $s = 0.5$.}
+\label{fig:metrics-vs-budget}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/examples_mnist.pdf}
+\caption{MNIST test images under the final mask generator. The learned mask
+(blue) follows the stroke; the random mask (orange) does not. Both
+reconstructions take observed pixels at their measured value and hidden pixels
+at the D3PM's posterior mean.}
+\label{fig:examples-mnist}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/examples_cifar10.pdf}
+\caption{CIFAR-10 test images under the final mask generator. At $s = 0.1$ the
+learned mask (blue) leaves the interior unobserved and the prior fills it with
+near-black, while the random mask (orange) at the same budget supports a
+recognizable reconstruction; by $s = 0.7$ the two are indistinguishable. This
+is the $6.3$~dB gap of Table~\ref{tab:cifar-new} in picture form.}
+\label{fig:examples-cifar}
+\end{figure}
 
 \section{Mask-generator hyperparameters}
 \label{app:hyper}
